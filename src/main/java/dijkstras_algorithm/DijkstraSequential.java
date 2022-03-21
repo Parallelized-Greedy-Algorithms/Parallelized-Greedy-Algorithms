@@ -9,9 +9,11 @@ public class DijkstraSequential extends DijkstraCore {
     public DijkstraSequential(Set<Node> nodes, Node source){
         super(nodes, source);
         queue = new LinkedList<>();
+        dist = new HashMap<>();
+        prev = new HashMap<>();
     }
 
-    private Node getShortestDistance(){
+    private Node getShortestDistance(Queue<Node> queue){
         Node curNode = null;
         int smallestDist = Integer.MAX_VALUE;
         for(Node node: queue){
@@ -33,7 +35,7 @@ public class DijkstraSequential extends DijkstraCore {
         dist.put(source, 0);
 
         while(!queue.isEmpty()){
-            Node curNode = getShortestDistance();
+            Node curNode = getShortestDistance(queue);
 
             queue.remove(curNode);
 

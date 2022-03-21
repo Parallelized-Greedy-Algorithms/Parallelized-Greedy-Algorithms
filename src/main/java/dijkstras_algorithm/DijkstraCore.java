@@ -7,12 +7,11 @@ public abstract class DijkstraCore {
     protected final Node source;
     protected Map<Node, Integer> dist; // distance from source to key
     protected Map<Node, Node> prev; // value is next node on the path from the key Node to the source
+    protected Queue<Node> queue;
 
     public DijkstraCore(Set<Node> nodes, Node source){
         this.nodes = nodes;
         this.source = source;
-        dist = new HashMap<>();
-        prev = new HashMap<>();
     }
 
     public Map<Node, Integer> getDistMap(){
@@ -22,6 +21,7 @@ public abstract class DijkstraCore {
     public Map<Node, Node> getPrevMap(){
         return prev;
     }
+
 
     public abstract void run();
 

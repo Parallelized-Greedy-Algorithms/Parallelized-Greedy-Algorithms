@@ -7,7 +7,7 @@ public class DijkstraDriver {
     static Random rng = new Random();
 
     public static void populateGraph(Graph graph){
-        graph.createNodes(10);
+        graph.createNodes(500);
         Set<Node> nodes = graph.getNodes();
 
         // generate complete graph
@@ -25,8 +25,21 @@ public class DijkstraDriver {
         populateGraph(graph);
 
         Set<Node> nodes = graph.getNodes();
-        DijkstraSequential sequential = new DijkstraSequential(nodes, nodes.stream().findFirst().get());
+        Node source = nodes.stream().findFirst().get();
+        DijkstraSequential sequential = new DijkstraSequential(nodes, source);
+        long start = System.nanoTime();
         sequential.run();
-        System.out.println(sequential);
+        long end = System.nanoTime();
+//        System.out.println(sequential);
+        float sequentialSeconds = ((float)(end-start))/1000000000;
+        DijkstraParallel parallel = new DijkstraParallel(nodes, source);
+        start = System.nanoTime();
+        parallel.run();
+        end = System.nanoTime();
+        float parallelSeconds = ((float)(end-start))/1000000000;
+        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel.toString()));
+        System.out.println("Sequential took " + sequentialSeconds);
+        System.out.println("Parallel took " + parallelSeconds);
+        System.out.println("sequential - parallel: " + (sequentialSeconds - parallelSeconds));
     }
 }
