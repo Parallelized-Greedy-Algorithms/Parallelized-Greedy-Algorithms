@@ -14,11 +14,13 @@ public class DijkstraParallel {
     protected final ThreadLocal<Queue<Node>> queue;
     protected final ThreadLocal<Set<Node>> settledNodes;
     protected final ConcurrentMap<Node, Integer> decideGlobalMin;
-    protected final AtomicMarkableReference<Node> globalMinimumNode;
+    protected final AtomicMarkableReference<Map.Entry<Node, Integer>> globalMinimumNode;
     protected final AtomicBoolean previousAuthorityToggle;
     protected final AtomicInteger numActiveThreads;
     protected final Set<Node> nodes;
     protected final Node source;
+    protected final ConcurrentMap<Node, Integer> globalDist;
+    protected final ConcurrentMap<Node, Node> globalPrev;
 
     public DijkstraParallel(Set<Node> nodes, Node source) {
         dist = ThreadLocal.withInitial(HashMap::new);
@@ -30,9 +32,11 @@ public class DijkstraParallel {
         this.source = source;
         threads = new HashSet<>();
         decideGlobalMin = new ConcurrentHashMap<>();
-        globalMinimumNode = new AtomicMarkableReference<>(source, true);
+        globalMinimumNode = new AtomicMarkableReference<>(new AbstractMap.SimpleEntry<>(source, 0), true);
         previousAuthorityToggle = new AtomicBoolean(true);
         numActiveThreads = new AtomicInteger(Runtime.getRuntime().availableProcessors());
+        globalDist = new ConcurrentHashMap<>();
+        globalPrev = new ConcurrentHashMap<>();
 
         int numNodesPerPartition = (int) Math.floor(nodes.size()/numActiveThreads.get());
         LinkedList<Node> tempNodes = new LinkedList<>(nodes);
@@ -75,30 +79,36 @@ public class DijkstraParallel {
             return curNode;
         }
 
-        private Node extractGlobalMin(Node localMin){
+        private Map.Entry<Node, Integer> extractGlobalMin(Node localMin){
             if(isGlobalAuthority){
                 // busy wait until the only active thread is the Authority
                 while(numActiveThreads.get() > 1){}
-                Integer globalMin = dist.get().get(localMin);
-                Node minNode = localMin;
+
+                // if localMin exists, initialize minEntry
+                Map.Entry<Node, Integer> minEntry = new AbstractMap.SimpleEntry<>(null, Integer.MAX_VALUE);
+                if(dist.get().containsKey(localMin)){
+                    minEntry = new AbstractMap.SimpleEntry<>(localMin, dist.get().get(localMin));
+                }
 
                 // iterate over each thread's local minimum node to find global minimum
                 for(Map.Entry<Node, Integer> entry : decideGlobalMin.entrySet()){
-                    if(entry.getValue() < globalMin){
-                        globalMin = entry.getValue();
-                        minNode = entry.getKey();
+                    if(entry.getValue() < minEntry.getValue()){
+                        minEntry = entry;
                     }
                 }
                 // set the global minimum node and set the mark to be the opposite of the previousAuthorityToggle
-                globalMinimumNode.set(minNode, !previousAuthorityToggle.get());
-                return minNode;
+                globalMinimumNode.set(minEntry, !previousAuthorityToggle.get());
+                numActiveThreads.set(numThreads);
+                return minEntry;
             }
             else{
                 // previous status of Authority
                 boolean prevAuth = previousAuthorityToggle.get();
 
-                // Give Authority thread's local minimum node
-                decideGlobalMin.put(localMin, dist.get().get(localMin));
+                // Give Authority thread's local minimum node if it exists
+                if(localMin != null){
+                    decideGlobalMin.put(localMin, dist.get().get(localMin));
+                }
                 // set thread to inactive state
                 numActiveThreads.decrementAndGet();
 
@@ -112,21 +122,28 @@ public class DijkstraParallel {
         public void run() {
             for(Node node: localNodes){
                 dist.get().put(node, Integer.MAX_VALUE);
-//                prev.get().put(node, null);
-//                queue.get().add(node);
+                prev.get().put(node, null);
+                queue.get().add(node);
             }
             if(localNodes.contains(source)){
                 settledNodes.get().add(source);
                 dist.get().put(source, 0);
                 queue.get().add(source);
             }
-            boolean quit = false;
 
+//            boolean quit = false;
+//
 //            while(!quit){
+//                Map.Entry<Node, Integer> curEntry = extractGlobalMin(extractLocalMin());
+//
+//                if(curEntry.getValue().equals(Integer.MAX_VALUE)){
+//                    quit = true;
+//                }
 //
 //            }
             while(!queue.get().isEmpty()){
-                Node curNode = extractGlobalMin(extractLocalMin());
+                Map.Entry<Node, Integer> curEntry = extractGlobalMin(extractLocalMin());
+                Node curNode = curEntry.getKey();
 
                 if(localNodes.contains(curNode)){
                     settledNodes.get().add(curNode);
@@ -142,6 +159,10 @@ public class DijkstraParallel {
                 }
             }
             numActiveThreads.decrementAndGet();
+
+            // update global dist & prev
+            globalDist.putAll(dist.get());
+            globalPrev.putAll(prev.get());
         }
     }
 
@@ -151,4 +172,39 @@ public class DijkstraParallel {
         }
         while(numActiveThreads.get() > 0){}
     }
+
+
+    @Override
+    public String toString(){
+        StringBuilder out = new StringBuilder();
+
+        for(Map.Entry<Node, Integer> distEntry: globalDist.entrySet()){
+            Node destination = distEntry.getKey();
+            int totalDistance = distEntry.getValue();
+            if(destination.equals(source)){
+                continue;
+            }
+
+            out.append("\n\nShortest path ").append(source.id).append(" -> ").
+                    append(destination.id).append(" with total distance of ").append(totalDistance).append("\n\t");
+
+            Node curNode = destination;
+            Node prevNode = globalPrev.get(destination);
+            Stack<String> stringStack = new Stack<>();
+
+            stringStack.add(String.valueOf(destination.id));
+            do{
+                stringStack.add(prevNode.id + " --[" + prevNode.getDistanceToNeighbor(curNode) + "]-> ");
+                curNode = prevNode;
+                prevNode = globalPrev.get(curNode);
+            }while(prevNode != null);
+
+            while(!stringStack.isEmpty()){
+                out.append(stringStack.pop());
+            }
+        }
+
+        return out.toString();
+    }
+
 }
