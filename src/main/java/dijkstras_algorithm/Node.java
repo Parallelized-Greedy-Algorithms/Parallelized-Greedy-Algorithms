@@ -8,10 +8,14 @@ import java.util.Set;
 public class Node {
     public int id;
     private Map<Node, Integer> neighbors;
+    private int distToSource;
+    private Node prevNode;
 
     public Node(int id){
         this.id = id;
         this.neighbors = new HashMap<>();
+        distToSource = Integer.MAX_VALUE;
+        prevNode = null;
     }
 
     public void setNeighbor(Node destination, int distance){
@@ -23,7 +27,26 @@ public class Node {
     }
 
     public int getDistanceToNeighbor(Node neighbor){
+        if(!neighbors.containsKey(neighbor)){
+            return Integer.MAX_VALUE;
+        }
         return neighbors.get(neighbor);
+    }
+
+    public int getDistToSource(){
+        return distToSource;
+    }
+
+    public Node getPrevNode(){
+        return prevNode;
+    }
+
+    public void setDistToSource(int dist){
+        distToSource = dist;
+    }
+
+    public void setPrevNode(Node node){
+        prevNode = node;
     }
 
     @Override

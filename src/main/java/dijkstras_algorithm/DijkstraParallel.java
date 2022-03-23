@@ -1,168 +1,179 @@
 package dijkstras_algorithm;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.core.config.DefaultConfiguration;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicMarkableReference;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class DijkstraParallel {
     private final Set<Thread> threads;
-    protected final ThreadLocal<Map<Node, Integer>> dist;
-    protected final ThreadLocal<Map<Node, Node>> prev;
-    protected final ThreadLocal<Queue<Node>> queue;
-    protected final ThreadLocal<Set<Node>> settledNodes;
-    protected final ConcurrentMap<Node, Integer> decideGlobalMin;
-    protected final AtomicMarkableReference<Map.Entry<Node, Integer>> globalMinimumNode;
+    protected final Set<Node> decideGlobalMinSet;
+    protected final AtomicMarkableReference<Node> globalMinNodeReference;
     protected final AtomicBoolean previousAuthorityToggle;
     protected final AtomicInteger numActiveThreads;
     protected final Set<Node> nodes;
     protected final Node source;
     protected final ConcurrentMap<Node, Integer> globalDist;
     protected final ConcurrentMap<Node, Node> globalPrev;
+    protected static Node nullNode = new Node(-1);
 
     public DijkstraParallel(Set<Node> nodes, Node source) {
-        dist = ThreadLocal.withInitial(HashMap::new);
-        prev = ThreadLocal.withInitial(HashMap::new);
-        queue = ThreadLocal.withInitial(LinkedList::new);
-        settledNodes = ThreadLocal.withInitial(HashSet::new);
-
         this.nodes = nodes;
         this.source = source;
         threads = new HashSet<>();
-        decideGlobalMin = new ConcurrentHashMap<>();
-        globalMinimumNode = new AtomicMarkableReference<>(new AbstractMap.SimpleEntry<>(source, 0), true);
-        previousAuthorityToggle = new AtomicBoolean(true);
+        decideGlobalMinSet = ConcurrentHashMap.newKeySet();
+        globalMinNodeReference = new AtomicMarkableReference<>(source, true);
+        previousAuthorityToggle = new AtomicBoolean(false);
         numActiveThreads = new AtomicInteger(Runtime.getRuntime().availableProcessors());
         globalDist = new ConcurrentHashMap<>();
         globalPrev = new ConcurrentHashMap<>();
 
-        int numNodesPerPartition = (int) Math.floor(nodes.size()/numActiveThreads.get());
         LinkedList<Node> tempNodes = new LinkedList<>(nodes);
 
-        for(int i = 0; i < numActiveThreads.get(); i++){
-            // evenly distribute nodes across all partitions
-            Set<Node> partitionNodes = new HashSet<>();
-            for(int j = 0; j < numNodesPerPartition; j++){
-                if(!tempNodes.isEmpty()){
-                    partitionNodes.add(tempNodes.remove());
-                }
-            }
-            threads.add(new Thread(new Partition(i == 0 ? true : false, partitionNodes, numActiveThreads)));
+        ArrayList<Set<Node>> nodesPerThread = new ArrayList<>();
+        for (int i = 0; i < numActiveThreads.get(); i++) {
+            nodesPerThread.add(i, new HashSet<>());
         }
+
+        while (!tempNodes.isEmpty()) {
+            for (int i = 0; i < numActiveThreads.get(); i++) {
+                if (tempNodes.isEmpty()) {
+                    break;
+                }
+                nodesPerThread.get(i).add(tempNodes.remove());
+            }
+        }
+
+        for (int i = 0; i < numActiveThreads.get(); i++) {
+            threads.add(new Thread(new Partition(i == 0 ? true : false, nodesPerThread.get(i), numActiveThreads)));
+        }
+
+        source.setDistToSource(0);
     }
 
     private class Partition implements Runnable{
+        private static Logger log = LogManager.getLogger(DijkstraParallel.class);
         private final boolean isGlobalAuthority;
         private final Set<Node> localNodes;
         private final int numThreads;
         private final AtomicInteger numActiveThreads;
+        private Set<Node> cluster;
+        private Set<Node> nonCluster;
+        private Node curGlobalMin;
 
         public Partition(boolean isGlobalAuthority, Set<Node> localNodes, AtomicInteger numActiveThreads){
+            Configurator.initialize(new DefaultConfiguration());
+            Configurator.setRootLevel(Level.INFO);
+
             this.isGlobalAuthority = isGlobalAuthority;
             this.localNodes = localNodes;
             this.numThreads = numActiveThreads.get();
             this.numActiveThreads = numActiveThreads;
+            
+            cluster = new HashSet<>();
+            cluster.add(source);
+            curGlobalMin = source;
+            log.info("SOURCE: " + source.id);
+            log.info("LOCAL NODES: " + localNodes);
         }
 
-        private Node extractLocalMin(){
-            Node curNode = null;
-            int smallestDist = Integer.MAX_VALUE;
-            for(Node node: queue.get()){
-                int curDist = dist.get().get(node);
-                if(curDist < smallestDist){
-                    smallestDist = curDist;
-                    curNode = node;
-                }
-            }
-            return curNode;
-        }
-
-        private Map.Entry<Node, Integer> extractGlobalMin(Node localMin){
+        private Node extractGlobalMin(Node localMinNode){
             if(isGlobalAuthority){
+                log.info("AUTH: waiting");
                 // busy wait until the only active thread is the Authority
                 while(numActiveThreads.get() > 1){}
+                log.info("AUTH: active");
+
+                String out = "";
 
                 // if localMin exists, initialize minEntry
-                Map.Entry<Node, Integer> minEntry = new AbstractMap.SimpleEntry<>(null, Integer.MAX_VALUE);
-                if(dist.get().containsKey(localMin)){
-                    minEntry = new AbstractMap.SimpleEntry<>(localMin, dist.get().get(localMin));
+                Node globalMinNode = null;
+                if(!localMinNode.equals(nullNode)){
+                    globalMinNode = localMinNode;
+                    out += "node: " + localMinNode.id + " dist: " + localMinNode.getDistToSource() + "\n";
                 }
 
                 // iterate over each thread's local minimum node to find global minimum
-                for(Map.Entry<Node, Integer> entry : decideGlobalMin.entrySet()){
-                    if(entry.getValue() < minEntry.getValue()){
-                        minEntry = entry;
+                for(Node node: decideGlobalMinSet){
+                    if(node.getDistToSource() < globalMinNode.getDistToSource()){
+                        globalMinNode = node;
                     }
+                    out += "node: " + node.id + " dist: " + node.getDistToSource() + "\n";
                 }
+
+                log.info("AUTH: declares minimum node: " + globalMinNode + "\n" + out);
                 // set the global minimum node and set the mark to be the opposite of the previousAuthorityToggle
-                globalMinimumNode.set(minEntry, !previousAuthorityToggle.get());
-                numActiveThreads.set(numThreads);
-                return minEntry;
+                globalMinNodeReference.set(globalMinNode, !globalMinNodeReference.isMarked());
+                // clear min set
+                decideGlobalMinSet.clear();
+                return globalMinNodeReference.getReference();
             }
             else{
                 // previous status of Authority
-                boolean prevAuth = previousAuthorityToggle.get();
+                boolean prevAuth = globalMinNodeReference.isMarked();
 
                 // Give Authority thread's local minimum node if it exists
-                if(localMin != null){
-                    decideGlobalMin.put(localMin, dist.get().get(localMin));
+                if(!localMinNode.equals(nullNode)){
+                    decideGlobalMinSet.add(localMinNode);
                 }
                 // set thread to inactive state
                 numActiveThreads.decrementAndGet();
 
+                log.info("REG: waiting");
                 // busy wait until Authority has finished finding global minimum node
-                while(globalMinimumNode.isMarked() == prevAuth){}
-                return globalMinimumNode.getReference();
+                while(globalMinNodeReference.isMarked() == prevAuth){}
+                log.info("REG: activated");
+
+                numActiveThreads.incrementAndGet();
+
+                return globalMinNodeReference.getReference();
             }
         }
 
         @Override
         public void run() {
-            for(Node node: localNodes){
-                dist.get().put(node, Integer.MAX_VALUE);
-                prev.get().put(node, null);
-                queue.get().add(node);
-            }
-            if(localNodes.contains(source)){
-                settledNodes.get().add(source);
-                dist.get().put(source, 0);
-                queue.get().add(source);
+            nonCluster = new HashSet<>(localNodes);
+            if(nonCluster.contains(source)){
+                nonCluster.remove(source);
             }
 
-//            boolean quit = false;
-//
-//            while(!quit){
-//                Map.Entry<Node, Integer> curEntry = extractGlobalMin(extractLocalMin());
-//
-//                if(curEntry.getValue().equals(Integer.MAX_VALUE)){
-//                    quit = true;
-//                }
-//
-//            }
-            while(!queue.get().isEmpty()){
-                Map.Entry<Node, Integer> curEntry = extractGlobalMin(extractLocalMin());
-                Node curNode = curEntry.getKey();
+            while(!nonCluster.isEmpty()){
 
-                if(localNodes.contains(curNode)){
-                    settledNodes.get().add(curNode);
+                log.info("Non-cluster: " + nonCluster);
 
-                    for(Node neighbor: curNode.getNeighbors()){
-                        int distFromRoot = dist.get().get(curNode) + curNode.getDistanceToNeighbor(neighbor);
+                Node localMinNode = nullNode;
+                for(Node outsideNode: nonCluster){
+                    int distFromRoot = curGlobalMin.getDistToSource() + curGlobalMin.getDistanceToNeighbor(outsideNode);
 
-                        if(distFromRoot < dist.get().get(neighbor)){
-                            dist.get().put(neighbor, distFromRoot);
-                            prev.get().put(neighbor, curNode);
-                        }
+                    if(distFromRoot < outsideNode.getDistToSource()){
+                        outsideNode.setDistToSource(distFromRoot);
+                        outsideNode.setPrevNode(curGlobalMin);
                     }
+
+                    if(outsideNode.getDistToSource() < localMinNode.getDistToSource()){
+                        localMinNode = outsideNode;
+                    }
+                }
+                log.info("local min node: " + localMinNode.id + " dist: " + localMinNode.getDistToSource());
+
+                curGlobalMin = extractGlobalMin(localMinNode);
+                cluster.add(curGlobalMin);
+                if(nonCluster.contains(curGlobalMin)){
+                    nonCluster.remove(curGlobalMin);
                 }
             }
             numActiveThreads.decrementAndGet();
-
-            // update global dist & prev
-            globalDist.putAll(dist.get());
-            globalPrev.putAll(prev.get());
         }
     }
 
@@ -174,25 +185,22 @@ public class DijkstraParallel {
     }
 
 
-    @Override
+
     public String toString(){
         StringBuilder out = new StringBuilder();
 
-        for(Map.Entry<Node, Integer> distEntry: globalDist.entrySet()){
-            Node destination = distEntry.getKey();
-            int totalDistance = distEntry.getValue();
-            if(destination.equals(source)){
+        for(Node node: nodes){
+            if(node.equals(source)){
                 continue;
             }
-
             out.append("\n\nShortest path ").append(source.id).append(" -> ").
-                    append(destination.id).append(" with total distance of ").append(totalDistance).append("\n\t");
+                    append(node.id).append(" with total distance of ").append(node.getDistToSource()).append("\n\t");
 
-            Node curNode = destination;
-            Node prevNode = globalPrev.get(destination);
+            Node curNode = node;
+            Node prevNode = node.getPrevNode();
             Stack<String> stringStack = new Stack<>();
 
-            stringStack.add(String.valueOf(destination.id));
+            stringStack.add(String.valueOf(node.id));
             do{
                 stringStack.add(prevNode.id + " --[" + prevNode.getDistanceToNeighbor(curNode) + "]-> ");
                 curNode = prevNode;
