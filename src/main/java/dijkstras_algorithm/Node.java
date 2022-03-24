@@ -18,6 +18,13 @@ public class Node {
         prevNode = null;
     }
 
+    public Node(Node node){
+        this.id = node.id;
+        this.neighbors = new HashMap<>(node.neighbors);
+        this.distToSource = node.distToSource;
+        this.prevNode = node.prevNode;
+    }
+
     public void setNeighbor(Node destination, int distance){
         neighbors.put(destination, distance);
     }

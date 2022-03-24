@@ -22,11 +22,11 @@ public class DijkstraParallel {
     protected final AtomicMarkableReference<Node> globalMinNodeReference;
     protected final AtomicBoolean previousAuthorityToggle;
     protected final AtomicInteger numActiveThreads;
+    private final AtomicInteger numThreads;
     protected final Set<Node> nodes;
     protected final Node source;
-    protected final ConcurrentMap<Node, Integer> globalDist;
-    protected final ConcurrentMap<Node, Node> globalPrev;
-    protected static Node nullNode = new Node(-1);
+
+    protected static final Node nullNode = new Node(-1);
 
     public DijkstraParallel(Set<Node> nodes, Node source) {
         this.nodes = nodes;
@@ -36,8 +36,7 @@ public class DijkstraParallel {
         globalMinNodeReference = new AtomicMarkableReference<>(source, true);
         previousAuthorityToggle = new AtomicBoolean(false);
         numActiveThreads = new AtomicInteger(Runtime.getRuntime().availableProcessors());
-        globalDist = new ConcurrentHashMap<>();
-        globalPrev = new ConcurrentHashMap<>();
+        this.numThreads = new AtomicInteger(numActiveThreads.get());
 
         LinkedList<Node> tempNodes = new LinkedList<>(nodes);
 
@@ -59,6 +58,7 @@ public class DijkstraParallel {
             threads.add(new Thread(new Partition(i == 0 ? true : false, nodesPerThread.get(i), numActiveThreads)));
         }
 
+        nodesPerThread.clear();
         source.setDistToSource(0);
     }
 
@@ -66,21 +66,18 @@ public class DijkstraParallel {
         private static Logger log = LogManager.getLogger(DijkstraParallel.class);
         private final boolean isGlobalAuthority;
         private final Set<Node> localNodes;
-        private final int numThreads;
-        private final AtomicInteger numActiveThreads;
         private Set<Node> cluster;
         private Set<Node> nonCluster;
         private Node curGlobalMin;
 
         public Partition(boolean isGlobalAuthority, Set<Node> localNodes, AtomicInteger numActiveThreads){
             Configurator.initialize(new DefaultConfiguration());
-            Configurator.setRootLevel(Level.INFO);
+//            Configurator.setRootLevel(Level.INFO);
+            Configurator.setRootLevel(Level.ERROR);
 
             this.isGlobalAuthority = isGlobalAuthority;
             this.localNodes = localNodes;
-            this.numThreads = numActiveThreads.get();
-            this.numActiveThreads = numActiveThreads;
-            
+
             cluster = new HashSet<>();
             cluster.add(source);
             curGlobalMin = source;
@@ -90,17 +87,15 @@ public class DijkstraParallel {
 
         private Node extractGlobalMin(Node localMinNode){
             if(isGlobalAuthority){
-                log.info("AUTH: waiting");
+                log.info("AUTH: waiting if true: num threads " + numActiveThreads.get() + " > 1");
                 // busy wait until the only active thread is the Authority
                 while(numActiveThreads.get() > 1){}
                 log.info("AUTH: active");
 
                 String out = "";
 
-                // if localMin exists, initialize minEntry
-                Node globalMinNode = null;
-                if(!localMinNode.equals(nullNode)){
-                    globalMinNode = localMinNode;
+                Node globalMinNode = localMinNode;
+                if(!globalMinNode.equals(nullNode)){
                     out += "node: " + localMinNode.id + " dist: " + localMinNode.getDistToSource() + "\n";
                 }
 
@@ -113,11 +108,14 @@ public class DijkstraParallel {
                 }
 
                 log.info("AUTH: declares minimum node: " + globalMinNode + "\n" + out);
-                // set the global minimum node and set the mark to be the opposite of the previousAuthorityToggle
-                globalMinNodeReference.set(globalMinNode, !globalMinNodeReference.isMarked());
                 // clear min set
                 decideGlobalMinSet.clear();
-                return globalMinNodeReference.getReference();
+                numActiveThreads.set(numThreads.get());
+
+                // set the global minimum node and set the mark to be the opposite of the previousAuthorityToggle
+                globalMinNodeReference.set(globalMinNode, !globalMinNodeReference.isMarked());
+                log.info("numThreads: " + numThreads.get());
+                log.info("numActiveThreads: " + numActiveThreads.get());
             }
             else{
                 // previous status of Authority
@@ -127,23 +125,28 @@ public class DijkstraParallel {
                 if(!localMinNode.equals(nullNode)){
                     decideGlobalMinSet.add(localMinNode);
                 }
-                // set thread to inactive state
-                numActiveThreads.decrementAndGet();
 
                 log.info("REG: waiting");
+
+                int before = numActiveThreads.get();
+                // set thread to inactive state
+                numActiveThreads.decrementAndGet();
+                int after = numActiveThreads.get();
+                log.info("numActiveThreads: " + before + "-> " + after);
+
                 // busy wait until Authority has finished finding global minimum node
                 while(globalMinNodeReference.isMarked() == prevAuth){}
                 log.info("REG: activated");
 
-                numActiveThreads.incrementAndGet();
-
-                return globalMinNodeReference.getReference();
             }
+            return globalMinNodeReference.getReference();
         }
 
         @Override
         public void run() {
             nonCluster = new HashSet<>(localNodes);
+            localNodes.clear();
+
             if(nonCluster.contains(source)){
                 nonCluster.remove(source);
             }
@@ -168,12 +171,33 @@ public class DijkstraParallel {
                 log.info("local min node: " + localMinNode.id + " dist: " + localMinNode.getDistToSource());
 
                 curGlobalMin = extractGlobalMin(localMinNode);
+
                 cluster.add(curGlobalMin);
                 if(nonCluster.contains(curGlobalMin)){
                     nonCluster.remove(curGlobalMin);
                 }
             }
-            numActiveThreads.decrementAndGet();
+
+            if(isGlobalAuthority){
+                log.info("Authority Thread FINISHED.");
+//                numThreads.decrementAndGet();
+                while(numThreads.get() > 1){
+                    extractGlobalMin(nullNode);
+                }
+                numActiveThreads.decrementAndGet();
+            }
+            else{
+                log.info("Thread FINISHED.");
+                int threadsBefore = numThreads.get();
+                int before = numActiveThreads.get();
+                numThreads.decrementAndGet();
+                numActiveThreads.decrementAndGet();
+                int threadsAfter = numThreads.get();
+                int after = numActiveThreads.get();
+
+                log.info("Number of threads decreased from " + threadsBefore + " -> " + threadsAfter);
+                log.info("numActiveThreads: " + before + " -> " + after);
+            }
         }
     }
 
@@ -183,7 +207,6 @@ public class DijkstraParallel {
         }
         while(numActiveThreads.get() > 0){}
     }
-
 
 
     public String toString(){
@@ -204,7 +227,7 @@ public class DijkstraParallel {
             do{
                 stringStack.add(prevNode.id + " --[" + prevNode.getDistanceToNeighbor(curNode) + "]-> ");
                 curNode = prevNode;
-                prevNode = globalPrev.get(curNode);
+                prevNode = curNode.getPrevNode();
             }while(prevNode != null);
 
             while(!stringStack.isEmpty()){

@@ -28,4 +28,16 @@ public class Graph {
     public Set<Node> getNodes(){
         return nodes;
     }
+
+    public String toString(){
+        StringBuilder out = new StringBuilder();
+        for(Node node: nodes){
+            out.append("Node " + node.id + ":\n");
+            for(Node neighbor: node.getNeighbors()){
+                out.append("\t--[" + node.getDistanceToNeighbor(neighbor) + "]-> Node " + neighbor + "\n");
+            }
+            out.append("\n");
+        }
+        return out.toString();
+    }
 }
