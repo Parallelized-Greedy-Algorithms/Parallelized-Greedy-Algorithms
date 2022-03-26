@@ -66,20 +66,20 @@ public class DijkstraParallel {
         private static Logger log = LogManager.getLogger(DijkstraParallel.class);
         private final boolean isGlobalAuthority;
         private final Set<Node> localNodes;
-        private Set<Node> cluster;
+//        private Set<Node> cluster;
         private Set<Node> nonCluster;
         private Node curGlobalMin;
 
         public Partition(boolean isGlobalAuthority, Set<Node> localNodes, AtomicInteger numActiveThreads){
             Configurator.initialize(new DefaultConfiguration());
 //            Configurator.setRootLevel(Level.INFO);
-            Configurator.setRootLevel(Level.ERROR);
+            Configurator.setRootLevel(Level.OFF);
 
             this.isGlobalAuthority = isGlobalAuthority;
             this.localNodes = localNodes;
 
-            cluster = new HashSet<>();
-            cluster.add(source);
+//            cluster = new HashSet<>();
+//            cluster.add(source);
             curGlobalMin = source;
             log.info("SOURCE: " + source.id);
             log.info("LOCAL NODES: " + localNodes);
@@ -92,11 +92,11 @@ public class DijkstraParallel {
                 while(numActiveThreads.get() > 1){}
                 log.info("AUTH: active");
 
-                String out = "";
+//                String out = "";
 
                 Node globalMinNode = localMinNode;
                 if(!globalMinNode.equals(nullNode)){
-                    out += "node: " + localMinNode.id + " dist: " + localMinNode.getDistToSource() + "\n";
+//                    out += "node: " + localMinNode.id + " dist: " + localMinNode.getDistToSource() + "\n";
                 }
 
                 // iterate over each thread's local minimum node to find global minimum
@@ -104,10 +104,10 @@ public class DijkstraParallel {
                     if(node.getDistToSource() < globalMinNode.getDistToSource()){
                         globalMinNode = node;
                     }
-                    out += "node: " + node.id + " dist: " + node.getDistToSource() + "\n";
+//                    out += "node: " + node.id + " dist: " + node.getDistToSource() + "\n";
                 }
 
-                log.info("AUTH: declares minimum node: " + globalMinNode + "\n" + out);
+//                log.info("AUTH: declares minimum node: " + globalMinNode + "\n" + out);
                 // clear min set
                 decideGlobalMinSet.clear();
                 numActiveThreads.set(numThreads.get());
@@ -172,7 +172,7 @@ public class DijkstraParallel {
 
                 curGlobalMin = extractGlobalMin(localMinNode);
 
-                cluster.add(curGlobalMin);
+//                cluster.add(curGlobalMin);
                 if(nonCluster.contains(curGlobalMin)){
                     nonCluster.remove(curGlobalMin);
                 }
@@ -209,33 +209,33 @@ public class DijkstraParallel {
     }
 
 
-    public String toString(){
-        StringBuilder out = new StringBuilder();
-
-        for(Node node: nodes){
-            if(node.equals(source)){
-                continue;
-            }
-            out.append("\n\nShortest path ").append(source.id).append(" -> ").
-                    append(node.id).append(" with total distance of ").append(node.getDistToSource()).append("\n\t");
-
-            Node curNode = node;
-            Node prevNode = node.getPrevNode();
-            Stack<String> stringStack = new Stack<>();
-
-            stringStack.add(String.valueOf(node.id));
-            do{
-                stringStack.add(prevNode.id + " --[" + prevNode.getDistanceToNeighbor(curNode) + "]-> ");
-                curNode = prevNode;
-                prevNode = curNode.getPrevNode();
-            }while(prevNode != null);
-
-            while(!stringStack.isEmpty()){
-                out.append(stringStack.pop());
-            }
-        }
-
-        return out.toString();
-    }
-
+//    public String toString(){
+//        StringBuilder out = new StringBuilder();
+//
+//        for(Node node: nodes){
+//            if(node.equals(source)){
+//                continue;
+//            }
+//            out.append("\n\nShortest path ").append(source.id).append(" -> ").
+//                    append(node.id).append(" with total distance of ").append(node.getDistToSource()).append("\n\t");
+//
+//            Node curNode = node;
+//            Node prevNode = node.getPrevNode();
+//            Stack<String> stringStack = new Stack<>();
+//
+//            stringStack.add(String.valueOf(node.id));
+//            do{
+//                stringStack.add(prevNode.id + " --[" + prevNode.getDistanceToNeighbor(curNode) + "]-> ");
+//                curNode = prevNode;
+//                prevNode = curNode.getPrevNode();
+//            }while(prevNode != null);
+//
+//            while(!stringStack.isEmpty()){
+//                out.append(stringStack.pop());
+//            }
+//        }
+//
+//        return out.toString();
+//    }
+//
 }

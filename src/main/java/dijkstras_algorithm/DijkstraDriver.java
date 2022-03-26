@@ -7,7 +7,7 @@ public class DijkstraDriver {
     static Random rng = new Random(4);
 
     public static void populateGraph(Graph graph){
-        graph.createNodes(30);
+        graph.createNodes(2000);
         Set<Node> nodes = graph.getNodes();
 
         // generate complete graph
@@ -29,8 +29,8 @@ public class DijkstraDriver {
         float sequentialSeconds = ((float)(end-start))/1000000000;
         System.out.println("Sequential took " + sequentialSeconds);
 
-        return sequential.toString();
-//        return "";
+//        return sequential.toString();
+        return "";
     }
 
     public static String runParallel(Set<Node> nodes, Node source){
@@ -41,8 +41,21 @@ public class DijkstraDriver {
         float parallelSeconds = ((float)(end-start))/1000000000;
         System.out.println("Parallel took " + parallelSeconds);
 
-        return parallel.toString();
-//        return "";
+//        return parallel.toString();
+        return "";
+    }
+
+    public static String runNaiveParallel(Set<Node> nodes, Node source){
+        dijkstras_algorithm.naive_parallel.DijkstraParallel parallel =
+                new dijkstras_algorithm.naive_parallel.DijkstraParallel(nodes, source);
+        long start = System.nanoTime();
+        parallel.run();
+        long end = System.nanoTime();
+        float parallelSeconds = ((float)(end-start))/1000000000;
+        System.out.println("Naive Parallel took " + parallelSeconds);
+
+//        return parallel.toString();
+        return "";
     }
 
     public static void main(String[] args){
@@ -54,13 +67,15 @@ public class DijkstraDriver {
 
         String sequential = runSequential(nodes, source);
         String parallel = runParallel(nodes, source);
+        String naiveParallel = runNaiveParallel(nodes, source);
+
 
 //        System.out.println(graph);
 //        System.out.println(sequential);
 //        System.out.println("PARALLEL: ");
 //        System.out.println(parallel);
         System.out.println("Number of nodes in graph: " + nodes.size());
-        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel.toString()));
+//        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel.toString()));
 //        System.out.println("sequential - parallel: " + (sequentialSeconds - parallelSeconds));
     }
 }
