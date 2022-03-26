@@ -7,7 +7,7 @@ public class DijkstraDriver {
     static Random rng = new Random(4);
 
     public static void populateGraph(Graph graph){
-        graph.createNodes(2000);
+        graph.createNodes(500);
         Set<Node> nodes = graph.getNodes();
 
         // generate complete graph
