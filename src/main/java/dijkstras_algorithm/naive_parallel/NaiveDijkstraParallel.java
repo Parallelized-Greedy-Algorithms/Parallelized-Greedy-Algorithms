@@ -6,11 +6,11 @@ import dijkstras_algorithm.Node;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class DijkstraParallel extends DijkstraCore {
+public class NaiveDijkstraParallel extends DijkstraCore {
     private final Set<Thread> threads;
     private final AtomicInteger numActiveThreads;
 
-    public DijkstraParallel(Set<Node> nodes, Node source) {
+    public NaiveDijkstraParallel(Set<Node> nodes, Node source) {
         super(nodes, source);
         dist = new HashMap<>();
         prev = new HashMap<>();

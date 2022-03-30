@@ -71,9 +71,6 @@ public class DijkstraParallel {
         private Node curGlobalMin;
 
         public Partition(boolean isGlobalAuthority, Set<Node> localNodes, AtomicInteger numActiveThreads){
-            Configurator.initialize(new DefaultConfiguration());
-//            Configurator.setRootLevel(Level.INFO);
-            Configurator.setRootLevel(Level.OFF);
 
             this.isGlobalAuthority = isGlobalAuthority;
             this.localNodes = localNodes;
@@ -126,14 +123,13 @@ public class DijkstraParallel {
                     decideGlobalMinSet.add(localMinNode);
                 }
 
-                log.info("REG: waiting");
-
                 int before = numActiveThreads.get();
                 // set thread to inactive state
                 numActiveThreads.decrementAndGet();
                 int after = numActiveThreads.get();
                 log.info("numActiveThreads: " + before + "-> " + after);
 
+                log.info("REG: waiting");
                 // busy wait until Authority has finished finding global minimum node
                 while(globalMinNodeReference.isMarked() == prevAuth){}
                 log.info("REG: activated");
