@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-public class Node {
+public class Node implements Comparable<Node>{
     public int id;
     private Map<Node, Integer> neighbors;
     private int distToSource;
@@ -76,5 +76,18 @@ public class Node {
     @Override
     public String toString(){
         return String.valueOf(id);
+    }
+
+    @Override
+    public int compareTo(Node o) {
+        if(id == o.id){
+            return 0;
+        }
+        else if(id > o.id){
+            return 1;
+        }
+        else{
+            return -1;
+        }
     }
 }

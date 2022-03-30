@@ -12,7 +12,7 @@ public class DijkstraDriver {
     static Random rng = new Random(4);
 
     public static void populateGraph(Graph graph){
-        graph.createNodes(3000);
+        graph.createNodes(1000);
         Set<Node> nodes = graph.getNodes();
 
         // generate complete graph
@@ -59,8 +59,8 @@ public class DijkstraDriver {
         float parallelSeconds = ((float)(end-start))/1000000000;
         System.out.println("Naive Parallel took " + parallelSeconds);
 
-//        return parallel.toString();
-        return "";
+        return parallel.toString();
+//        return "";
     }
 
     public static String runDijkstraParallel2(Set<Node> nodes, Node source){
@@ -87,7 +87,7 @@ public class DijkstraDriver {
         Node source = nodes.stream().findFirst().get();
 
         String sequential = runSequential(nodes, source);
-//        String parallel = runParallel(nodes, source);
+        String parallel = runParallel(nodes, source);
 //        String naiveParallel = runNaiveParallel(nodes, source);
         String parallel2 = runDijkstraParallel2(nodes, source);
 
@@ -98,7 +98,7 @@ public class DijkstraDriver {
 //        System.out.println(parallel2);
         System.out.println("Number of nodes in graph: " + nodes.size());
 //        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel.toString()));
-        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel2.toString()));
+//        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel2.toString()));
 //        System.out.println("sequential - parallel: " + (sequentialSeconds - parallelSeconds));
     }
 }

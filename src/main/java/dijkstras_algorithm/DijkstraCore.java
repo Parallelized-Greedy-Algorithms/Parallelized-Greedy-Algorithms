@@ -29,7 +29,8 @@ public abstract class DijkstraCore {
     public String toString(){
         StringBuilder out = new StringBuilder();
 
-        for(Map.Entry<Node, Integer> distEntry: dist.entrySet()){
+        TreeMap<Node, Integer> sortedMap = new TreeMap<>(dist);
+        for(Map.Entry<Node, Integer> distEntry: sortedMap.entrySet()){
             Node destination = distEntry.getKey();
             int totalDistance = distEntry.getValue();
             if(destination.equals(source)){

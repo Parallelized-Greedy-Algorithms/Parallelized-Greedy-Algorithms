@@ -42,10 +42,13 @@ public class DijkstraParallel2 {
             globalPrev.add(-1);
         }
 
+        ArrayList<Node> sortedNodes = new ArrayList<>(nodes);
+        sortedNodes.sort(Comparator.comparing(Node::getId));
+
         int i = 0;
-        for(Node node: nodes){
+        for(Node node: sortedNodes){
             int j = 0;
-            for(Node node2: nodes){
+            for(Node node2: sortedNodes){
                 this.edges[i][j] = node.getDistanceToNeighbor(node2);
                 j++;
             }
