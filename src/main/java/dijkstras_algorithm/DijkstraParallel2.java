@@ -28,8 +28,8 @@ public class DijkstraParallel2 {
         this.edges = new int[nodes.size()][nodes.size()];
 
         numNodes = nodes.size();
-        numActiveThreads = new AtomicInteger(Runtime.getRuntime().availableProcessors());
-        numThreads = new AtomicInteger(Runtime.getRuntime().availableProcessors());
+        numActiveThreads = new AtomicInteger(DijkstraDriver.PROCESSORS);
+        numThreads = new AtomicInteger(DijkstraDriver.PROCESSORS);
         threads = new HashSet<>();
         decideGlobalMinSet = ConcurrentHashMap.newKeySet();
         globalMinNodeReference = new AtomicMarkableReference<>(

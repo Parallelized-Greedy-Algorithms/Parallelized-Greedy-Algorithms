@@ -9,10 +9,11 @@ import java.util.Random;
 import java.util.Set;
 
 public class DijkstraDriver {
+    public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
     static Random rng = new Random(4);
 
     public static void populateGraph(Graph graph){
-        graph.createNodes(1000);
+        graph.createNodes(10000);
         Set<Node> nodes = graph.getNodes();
 
         // generate complete graph

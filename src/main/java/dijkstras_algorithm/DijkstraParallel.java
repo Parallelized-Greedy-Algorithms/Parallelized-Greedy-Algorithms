@@ -35,7 +35,7 @@ public class DijkstraParallel {
         decideGlobalMinSet = ConcurrentHashMap.newKeySet();
         globalMinNodeReference = new AtomicMarkableReference<>(source, true);
         previousAuthorityToggle = new AtomicBoolean(false);
-        numActiveThreads = new AtomicInteger(Runtime.getRuntime().availableProcessors());
+        numActiveThreads = new AtomicInteger(DijkstraDriver.PROCESSORS);
         this.numThreads = new AtomicInteger(numActiveThreads.get());
 
         LinkedList<Node> tempNodes = new LinkedList<>(nodes);
