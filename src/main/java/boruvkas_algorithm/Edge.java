@@ -1,21 +1,21 @@
 package boruvkas_algorithm;
 
 public class Edge {
-    private final int node1;
-    private final int node2;
+    private final Node node1;
+    private final Node node2;
     private final int distance;
 
-    public Edge(int node1, int node2, int distance){
+    public Edge(Node node1, Node node2, int distance){
         this.node1 = node1;
         this.node2 = node2;
         this.distance = distance;
     }
 
-    public boolean contains(int node){
-        return node == node1 || node == node2;
+    public boolean contains(Node node){
+        return node.equals(node1) || node.equals(node2);
     }
 
-    public int getNeighbor(int node){
+    public Node getNeighbor(Node node){
         if(node == node1){
             return node2;
         }
@@ -28,11 +28,11 @@ public class Edge {
         return distance;
     }
 
-    public int getNode1(){
+    public Node getNode1(){
         return node1;
     }
 
-    public int getNode2(){
+    public Node getNode2(){
         return node2;
     }
 

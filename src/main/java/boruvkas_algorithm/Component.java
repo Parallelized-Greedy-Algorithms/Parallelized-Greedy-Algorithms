@@ -1,19 +1,32 @@
 package boruvkas_algorithm;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Component {
-    private final Set<Integer> nodes;
-    private final Map<Edge, Boolean> edges;
+    private final Set<Node> nodes;
+    private final Map<Edge, Boolean> edges = new ConcurrentHashMap<>(); // edges connecting to other components
     private Map.Entry<Edge, Boolean> shortestEdge; // true designates node1 is in nodes
+    private boolean newComponent;
 
-    public Component(Integer node){
+    public Component(Node node){
         this.nodes = new HashSet<>();
         nodes.add(node);
-        edges = new HashMap<>();
+//        edges = new HashMap<>();
+        newComponent = false;
     }
 
-    public boolean contains(int node){
+    public Component(Component comp1, Component comp2){
+        this.nodes = new HashSet<>();
+//        this.edges = new HashMap<>();
+        nodes.addAll(comp1.getNodes());
+        nodes.addAll(comp2.getNodes());
+        edges.putAll(comp1.getEdges());
+        edges.putAll(comp2.getEdges());
+//        newComponent = true;
+    }
+
+    public boolean contains(Node node){
         return nodes.contains(node);
     }
 
@@ -25,15 +38,23 @@ public class Component {
         edges.clear();
     }
 
-    public void addNodes(Set<Integer> nodesToAdd){
+    public boolean isNewComponent(){
+        return newComponent;
+    }
+
+    public void addNodes(Set<Node> nodesToAdd){
         nodes.addAll(nodesToAdd);
     }
 
-    public void addNode(Integer nodeToAdd){
+    public void addNode(Node nodeToAdd){
         nodes.add(nodeToAdd);
     }
 
-    public Set<Integer> getNodes(){
+    public void setNewComponent(boolean val){
+        newComponent = val;
+    }
+
+    public Set<Node> getNodes(){
         return nodes;
     }
 
@@ -73,7 +94,7 @@ public class Component {
     }
 
     // get node not in nodes set
-    public int getCurCompNode(){
+    public Node getCurCompNode(){
         if(shortestEdge.getValue()){
             return shortestEdge.getKey().getNode1();
         }
@@ -82,7 +103,7 @@ public class Component {
         }
     }
 
-    public int getNextCompNode(){
+    public Node getNextCompNode(){
         if(shortestEdge.getValue()){
             return shortestEdge.getKey().getNode2();
         }
@@ -93,11 +114,12 @@ public class Component {
 
     @Override
     public String toString(){
-        if(shortestEdge != null){
-            return nodes.toString() + " | shortestNode: " + shortestEdge.getKey();
-        }
-        else{
-            return nodes.toString();
-        }
+//        if(shortestEdge != null){
+//            return nodes.toString() + " | : " + shortestEdge.getKey();
+//        }
+//        else{
+//            return nodes.toString();
+//        }
+        return nodes.toString() + " | isNewComponent: " + newComponent;
     }
 }
