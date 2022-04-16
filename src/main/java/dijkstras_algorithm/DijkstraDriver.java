@@ -12,15 +12,15 @@ public class DijkstraDriver {
     public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
     static Random rng = new Random(4);
 
-    public static void populateGraph(Graph graph){
-        graph.createNodes(10000);
+    public static void populateGraph(Graph graph, int numNodes){
+        graph.createNodes(numNodes);
         Set<Node> nodes = graph.getNodes();
 
         // generate complete graph
         for(Node node1: nodes){
             for(Node node2: nodes){
                 if(!node1.equals(node2)){
-                    graph.createEdge(node1, node2, rng.nextInt(1, 50));
+                    graph.createEdge(node1, node2, 1+rng.nextInt(49));
                 }
             }
         }
@@ -70,7 +70,7 @@ public class DijkstraDriver {
         parallel.run();
         long end = System.nanoTime();
         float parallelSeconds = ((float)(end-start))/1000000000;
-        System.out.println("Non OOP Parallel took " + parallelSeconds);
+        System.out.println("Parallel2 took " + parallelSeconds);
 
         return parallel.toString();
 //        return "";
@@ -81,25 +81,23 @@ public class DijkstraDriver {
 //            Configurator.setRootLevel(Level.INFO);
         Configurator.setRootLevel(Level.OFF);
 
-        Graph graph = new Graph();
-        populateGraph(graph);
 
-        Set<Node> nodes = graph.getNodes();
-        Node source = nodes.stream().findFirst().get();
+        System.out.println("Threads: " + PROCESSORS);
+        for(int i = 500; i < 1001; i+= 500){
+            Graph graph = new Graph();
+            populateGraph(graph, i);
 
-        String sequential = runSequential(nodes, source);
-        String parallel = runParallel(nodes, source);
-//        String naiveParallel = runNaiveParallel(nodes, source);
-        String parallel2 = runDijkstraParallel2(nodes, source);
+            Set<Node> nodes = graph.getNodes();
+            Node source = nodes.stream().findFirst().get();
+
+            System.out.println("Number of nodes: " + i);
+            String sequential = runSequential(nodes, source);
+//            String naiveParallel = runNaiveParallel(nodes, source);
+            String parallel = runParallel(nodes, source);
+            String parallel2 = runDijkstraParallel2(nodes, source);
+            System.out.println();
+        }
 
 
-//        System.out.println(graph);
-//        System.out.println(sequential);
-//        System.out.println("PARALLEL: ");
-//        System.out.println(parallel2);
-        System.out.println("Number of nodes in graph: " + nodes.size());
-//        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel.toString()));
-//        System.out.println("Sequential & parallel output equal: " + sequential.toString().equals(parallel2.toString()));
-//        System.out.println("sequential - parallel: " + (sequentialSeconds - parallelSeconds));
     }
 }

@@ -63,7 +63,7 @@ public class DijkstraParallel {
     }
 
     private class Partition implements Runnable{
-        private static Logger log = LogManager.getLogger(DijkstraParallel.class);
+        private Logger log = LogManager.getLogger(DijkstraParallel.class);
         private final boolean isGlobalAuthority;
         private final Set<Node> localNodes;
 //        private Set<Node> cluster;

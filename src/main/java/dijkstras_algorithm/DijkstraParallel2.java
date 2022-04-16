@@ -107,7 +107,7 @@ public class DijkstraParallel2 {
         private int[] localPrevNodes;
         private int curGlobalMinNode;
 
-        private static Logger log = LogManager.getLogger(DijkstraParallel.class);
+        private Logger log = LogManager.getLogger(DijkstraParallel.class);
         private final boolean isGlobalAuthority;
 
         public Partition(boolean isGlobalAuthority, Set<Integer> nonClusterNodes, int[] localNodes){
@@ -263,33 +263,33 @@ public class DijkstraParallel2 {
         while(numActiveThreads.get() > 0){}
     }
 
-    public String toString(){
-        StringBuilder out = new StringBuilder();
-
-        for(int i = 0; i < numNodes; i++){
-            if(i == source){
-                continue;
-            }
-            out.append("\n\nShortest path ").append(source).append(" -> ").
-                    append(i).append(" with total distance of ").append(globalDist.get(i)).append("\n\t");
-
-            int curNode = i;
-            int prevNode = globalPrev.get(i);
-            Stack<String> stringStack = new Stack<>();
-
-            stringStack.add(String.valueOf(i));
-            do{
-                stringStack.add(prevNode + " --[" + edges[curNode][prevNode] + "]-> ");
-                curNode = prevNode;
-                prevNode = globalPrev.get(curNode);
-            }while(prevNode != -1);
-
-            while(!stringStack.isEmpty()){
-                out.append(stringStack.pop());
-            }
-        }
-
-        return out.toString();
-    }
+//    public String toString(){
+//        StringBuilder out = new StringBuilder();
+//
+//        for(int i = 0; i < numNodes; i++){
+//            if(i == source){
+//                continue;
+//            }
+//            out.append("\n\nShortest path ").append(source).append(" -> ").
+//                    append(i).append(" with total distance of ").append(globalDist.get(i)).append("\n\t");
+//
+//            int curNode = i;
+//            int prevNode = globalPrev.get(i);
+//            Stack<String> stringStack = new Stack<>();
+//
+//            stringStack.add(String.valueOf(i));
+//            do{
+//                stringStack.add(prevNode + " --[" + edges[curNode][prevNode] + "]-> ");
+//                curNode = prevNode;
+//                prevNode = globalPrev.get(curNode);
+//            }while(prevNode != -1);
+//
+//            while(!stringStack.isEmpty()){
+//                out.append(stringStack.pop());
+//            }
+//        }
+//
+//        return out.toString();
+//    }
 
 }
