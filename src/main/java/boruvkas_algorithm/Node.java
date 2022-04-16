@@ -1,9 +1,9 @@
 package boruvkas_algorithm;
 
-import java.util.Set;
 
 public class Node {
     private final int id;
+    public static int globalId = 0;
     private Component component;
 //    private final Set<Edge> neighbors;
 

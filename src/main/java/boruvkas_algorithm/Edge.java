@@ -1,9 +1,21 @@
 package boruvkas_algorithm;
 
-public class Edge {
-    private final Node node1;
-    private final Node node2;
-    private final int distance;
+import org.jgrapht.graph.DefaultWeightedEdge;
+
+import java.util.Random;
+
+public class Edge extends DefaultWeightedEdge {
+    private Node node1;
+    private Node node2;
+    private int distance;
+
+    private static final int MAX_DISTANCE = 100;
+
+    private Random rng;
+
+    public Edge(Random rng){
+        this.rng = rng;
+    }
 
     public Edge(Node node1, Node node2, int distance){
         this.node1 = node1;
@@ -22,6 +34,12 @@ public class Edge {
         else{
             return node1;
         }
+    }
+
+    public void assignValues(){
+        this.node1 = (Node) this.getSource();
+        this.node2 = (Node) this.getTarget();
+        this.distance = rng.nextInt(MAX_DISTANCE);
     }
 
     public int getDistance(){

@@ -120,6 +120,6 @@ public class Component {
 //        else{
 //            return nodes.toString();
 //        }
-        return nodes.toString() + " | isNewComponent: " + newComponent;
+        return nodes.toString();
     }
 }

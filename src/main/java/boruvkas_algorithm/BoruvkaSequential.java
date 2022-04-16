@@ -1,67 +1,38 @@
 package boruvkas_algorithm;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jgrapht.Graph;
+
 import java.util.*;
 
 public class BoruvkaSequential {
+    private static final Logger log = LogManager.getLogger(BoruvkaSequential.class);
     private final Set<Node> nodes;
     private final Set<Edge> edges;
     private final Set<Component> components;
 
-    public BoruvkaSequential(int numNodes, int[][] edges){
-        this.nodes = new HashSet<>();
-        for(int i = 0; i < numNodes; i++){
-            nodes.add(new Node(i));
-        }
-        this.edges = convertEdges(edges);
+    public BoruvkaSequential(Set<Node> nodes, Set<Edge> edges){
+        this.nodes = nodes;
+        this.edges = edges;
+        this.components = new HashSet<>();
 
-        components = new HashSet<>();
+        buildComponentsSet();
+    }
 
+    private void buildComponentsSet(){
         for(Node curNode: nodes){
             Component curComp = new Component(curNode);
             curNode.setComponent(curComp);
-            components.add(curComp);
 
             for(Edge edge: this.edges){
                 if(edge.contains(curNode)){
                     curComp.addEdge(edge, edge.getNode1().getId() == curNode.getId() ? true : false);
                 }
             }
+            components.add(curComp);
         }
     }
-
-    private Set<Edge> convertEdges(int[][] edges){
-        Set<Edge> newEdges = new HashSet<>();
-
-        for(int i = 0; i < edges.length; i++){
-            for(int j = 0; j < i; j++){
-                Node node1 = null;
-                Node node2 = null;
-                for(Node node: nodes){
-                    if(node.getId() == i){
-                        node1 = node;
-                    }
-                    else if(node.getId() == j){
-                        node2 = node;
-                    }
-                    if(node1 != null && node2 != null){
-                        break;
-                    }
-                }
-                newEdges.add(new Edge(node1, node2, edges[i][j]));
-            }
-        }
-        return newEdges;
-    }
-
-//    private boolean isPreferredOver(Edge edge1, Edge edge2){
-//        int dist1 = edge1.getDistance();
-//        int dist2 = edge2.getDistance();
-//        return dist1 < dist2 || (dist1 == dist2 && tieBreaker(edge1, edge2));
-//    }
-//
-//    private boolean tieBreaker(Edge edge1, Edge edge2){
-//        return (edge1.getNode1()+edge1.getNode2()) < (edge2.getNode1()+edge2.getNode2());
-//    }
 
     public Set<Edge> run(){
         boolean completed = false;
@@ -85,40 +56,32 @@ public class BoruvkaSequential {
                 }
             }
 
-            components.clear();
             for(Edge edge: shortestEdges){
                 Component comp1 = edge.getNode1().getComponent();
                 Component comp2 = edge.getNode2().getComponent();
 
+                Component oldComp = null;
                 Component newComp = null;
-                if(comp1.isNewComponent() || comp2.isNewComponent()){
-                    Component oldComp = null;
-                    if(comp1.isNewComponent()){
-                        newComp = comp1;
-                        oldComp = comp2;
-                    }
-                    else{
-                        newComp = comp2;
-                        oldComp = comp1;
-                    }
-                    newComp.addNodes(oldComp.getNodes());
-                    newComp.addEdges(oldComp.getEdges());
+                if(comp1.isNewComponent()){
+                    newComp = comp1;
+                    oldComp = comp2;
                 }
                 else{
-                    newComp = new Component(comp1, comp2);
-                    components.add(newComp);
+                    newComp = comp2;
+                    oldComp = comp1;
                 }
-//                for(Node node: newComp.getNodes()){
-//                    node.setComponent(newComp);
-//                }
-                System.out.println();
-            }
+                components.remove(oldComp);
+                newComp.setNewComponent(true);
 
-            for(Component component: components){
-                for(Node node: component.getNodes()){
-                    node.setComponent(component);
+                for(Node node: oldComp.getNodes()){
+                    node.setComponent(newComp);
                 }
+                newComp.addNodes(oldComp.getNodes());
+                newComp.addEdges(oldComp.getEdges());
+
+                edgesPrime.add(edge);
             }
+            log.info(components);
 
             // remove edges that aren't in-between two differing components
             for(Component component: components){
@@ -139,10 +102,8 @@ public class BoruvkaSequential {
                 }
             }
 
-
             if(components.size() == 1){
                 completed = true;
-                edgesPrime = components.stream().findAny().get().getEdges().keySet();
             }
         }
         return edgesPrime;
