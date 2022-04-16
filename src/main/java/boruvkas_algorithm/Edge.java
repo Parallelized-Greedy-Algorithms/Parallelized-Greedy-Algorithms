@@ -55,7 +55,10 @@ public class Edge extends DefaultWeightedEdge {
     }
 
     @Override
+//    public String toString(){
+//        return node1 + " <--[" + distance + "]--> " + node2;
+//    }
     public String toString(){
-        return node1 + " <--[" + distance + "]--> " + node2;
+        return String.valueOf(distance);
     }
 }

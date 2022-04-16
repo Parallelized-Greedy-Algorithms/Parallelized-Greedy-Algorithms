@@ -50,18 +50,15 @@ public class BoruvkaSequential {
                     }
                 }
                 assert(shortestEdgeEntry != null);
-                component.setShortestEdge(shortestEdgeEntry);
-                if(shortestEdgeEntry != null){
-                    shortestEdges.add(shortestEdgeEntry.getKey());
-                }
+                shortestEdges.add(shortestEdgeEntry.getKey());
             }
 
             for(Edge edge: shortestEdges){
                 Component comp1 = edge.getNode1().getComponent();
                 Component comp2 = edge.getNode2().getComponent();
 
-                Component oldComp = null;
-                Component newComp = null;
+                Component oldComp;
+                Component newComp;
                 if(comp1.isNewComponent()){
                     newComp = comp1;
                     oldComp = comp2;
@@ -81,14 +78,14 @@ public class BoruvkaSequential {
 
                 edgesPrime.add(edge);
             }
-            log.info(components);
+            log.info("Number of components: " + components.size());
 
             // remove edges that aren't in-between two differing components
             for(Component component: components){
                 component.setNewComponent(false);
                 for(Map.Entry<Edge, Boolean> entry: component.getEdges().entrySet()){
                     // false boolean designates that node1 is outside of component
-                    Node node = null; // node that should be in different component
+                    Node node; // node that should be in different component
                     if(entry.getValue()){ // node1 is in component
                         node = entry.getKey().getNode2();
                     }
