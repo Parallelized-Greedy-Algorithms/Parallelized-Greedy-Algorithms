@@ -1,8 +1,7 @@
-package boruvkas_algorithm;
+package boruvkas_algorithm.Sequential;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jgrapht.Graph;
 
 import java.util.*;
 
@@ -38,6 +37,8 @@ public class BoruvkaSequential {
         boolean completed = false;
         Set<Edge> edgesPrime = new HashSet<>();
 
+        long startTime, endTime;
+        startTime = System.currentTimeMillis();
         while(!completed){
             Set<Edge> shortestEdges = new HashSet<>();
             for(Component component: components){
@@ -78,7 +79,9 @@ public class BoruvkaSequential {
 
                 edgesPrime.add(edge);
             }
-            log.info("Number of components: " + components.size());
+            endTime = System.currentTimeMillis();
+            log.info("Number of components: " + components.size() + " | took " + (endTime-startTime) + " ms");
+            startTime = System.currentTimeMillis();
 
             // remove edges that aren't in-between two differing components
             for(Component component: components){
@@ -99,7 +102,7 @@ public class BoruvkaSequential {
                 }
             }
 
-            if(components.size() == 1){
+            if(components.size() <= 1){
                 completed = true;
             }
         }

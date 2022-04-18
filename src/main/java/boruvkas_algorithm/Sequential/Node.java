@@ -1,4 +1,4 @@
-package boruvkas_algorithm;
+package boruvkas_algorithm.Sequential;
 
 
 public class Node {

@@ -1,5 +1,8 @@
 package boruvkas_algorithm;
 
+import boruvkas_algorithm.Sequential.BoruvkaSequential;
+import boruvkas_algorithm.Sequential.Edge;
+import boruvkas_algorithm.Sequential.Node;
 import com.mxgraph.layout.*;
 import com.mxgraph.layout.hierarchical.mxHierarchicalLayout;
 import com.mxgraph.model.mxGraphModel;
