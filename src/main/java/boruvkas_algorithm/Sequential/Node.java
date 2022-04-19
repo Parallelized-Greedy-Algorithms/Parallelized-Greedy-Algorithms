@@ -1,6 +1,8 @@
 package boruvkas_algorithm.Sequential;
 
 
+import boruvkas_algorithm.Sequential.Component;
+
 public class Node {
     private final int id;
     public static int globalId = 0;

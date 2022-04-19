@@ -1,5 +1,6 @@
 package boruvkas_algorithm.Sequential;
 
+import boruvkas_algorithm.Sequential.Node;
 import org.jgrapht.graph.DefaultWeightedEdge;
 
 import java.util.Random;
