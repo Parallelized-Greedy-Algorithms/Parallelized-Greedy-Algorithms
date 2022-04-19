@@ -33,15 +33,34 @@ public class BoruvkaParallel {
 
         graph = new CSRGraph(nodes, edges);
 
+        int nodeNum = 0;
+        int nodesPerThread = (int) Math.ceil(graph.numNodes / numWorkingThreads.get());
+        for(int i = 0; i < numProcessors; i++){
+            Set<Integer> localNodes = new HashSet<>();
+            for(int j = 0; j < nodesPerThread; j++){
+                if(nodeNum < graph.numNodes){
+                    localNodes.add(nodeNum++);
+                }
+                else{
+                    break;
+                }
+            }
+
+            threads.add(new Thread(new Worker(i == 0 ? true : false, i, localNodes)));
+            threadToLocalNodesMap.put(i, localNodes);
+        }
+
     }
 
-    public class Worker implements Runnable{
+    private class Worker implements Runnable{
         private Set<Integer> localNodes;
         private final boolean isAuthority;
+        private final int threadID;
 
-        public Worker(boolean isAuthority, Set<Integer> localNodes){
+        public Worker(boolean isAuthority, int threadID, Set<Integer> localNodes){
             this.isAuthority = isAuthority;
             this.localNodes = localNodes;
+            this.threadID = threadID;
         }
 
         @Override
@@ -118,7 +137,7 @@ public class BoruvkaParallel {
                     }
                 }
             }
-
+            System.out.println();
         }
 
         public void buildNewFirstEdges(CSRGraph newGraph){
@@ -179,8 +198,8 @@ public class BoruvkaParallel {
     }
 
     public void run(){
-        for(int i = 0; i < numProcessors; i++){
-//            threads.add(new Thread(new Worker(i == 0 ? true: false, )));
+        for(Thread thread: threads){
+            thread.start();
         }
     }
 }

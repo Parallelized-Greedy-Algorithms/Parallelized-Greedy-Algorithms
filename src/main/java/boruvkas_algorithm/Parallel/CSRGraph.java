@@ -22,18 +22,29 @@ public class CSRGraph {
         colors = new Unit[size];
         nodeMinEdges = new Unit[size];
         numNodes = size;
+
+        for(int i = 0; i < size; i++){
+            firstEdges[i] = new Unit();
+            outDegrees[i] = new Unit();
+            colors[i] = new Unit();
+            nodeMinEdges[i] = new Unit();
+        }
     }
 
     public CSRGraph(Set<Node> nodes, Set<Edge> edges){
         this(nodes);
-        int[] numNeighbors = new int[numNodes];
+        destinations = new Unit[edges.size()];
+        weights = new Unit[edges.size()];
 
-        for(Edge edge: edges){
-            int node1ID = edge.getNode1().getId();
-            int node2ID = edge.getNode2().getId();
-            destinations[node1ID].value = node2ID;
-            weights[node1ID].value = edge.getDistance();
-            outDegrees[node1ID].value++;
+        int edgeCounter = 0;
+        for(Node node: nodes){
+            for(Edge edge: edges){
+                if(node.getId() == edge.getNode1().getId()){
+                    outDegrees[node.getId()].value++;
+                    destinations[edgeCounter] = new Unit(edge.getNode2().getId());
+                    weights[edgeCounter++] = new Unit(edge.getDistance());
+                }
+            }
         }
 
         firstEdges[0].value = 0;

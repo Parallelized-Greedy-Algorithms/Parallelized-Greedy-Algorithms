@@ -1,5 +1,6 @@
 package boruvkas_algorithm;
 
+import boruvkas_algorithm.Parallel.BoruvkaParallel;
 import boruvkas_algorithm.Sequential.BoruvkaSequential;
 import boruvkas_algorithm.Sequential.Edge;
 import boruvkas_algorithm.Sequential.Node;
@@ -30,10 +31,11 @@ import java.util.function.Supplier;
 
 public class BoruvkaDriver {
     private static final Logger log = LogManager.getLogger(BoruvkaDriver.class);
+    public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
     static final int SEED = 5;
     static Random rng = new Random(SEED);
-    static final int NUM_NODES = 5000;
-    static final int K_NEIGHBORS = 10; // should be > ln(NUM_NODES) && even
+    static final int NUM_NODES = 10;
+    static final int K_NEIGHBORS = 4; // should be > ln(NUM_NODES) && even
     static final double PROB_REWIRE = 0.2;
 
     public static void writeGraph(Graph graph) throws IOException {
@@ -91,14 +93,17 @@ public class BoruvkaDriver {
 //        }
 
 
-        BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
-        Set<Edge> minEdges = sequential.run();
-        int sum = 0;
-        for(Edge edge: minEdges){
-            sum += edge.getDistance();
-        }
-        log.info("Number nodes: " + graph.vertexSet().size());
-        log.info("Number edges: " + minEdges.size());
-        log.info("Minimum sum: " + sum);
+//        BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
+//        Set<Edge> minEdges = sequential.run();
+//        int sum = 0;
+//        for(Edge edge: minEdges){
+//            sum += edge.getDistance();
+//        }
+//        log.info("Number nodes: " + graph.vertexSet().size());
+//        log.info("Number edges: " + minEdges.size());
+//        log.info("Minimum sum: " + sum);
+
+        BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
+        parallel.run();
     }
 }
