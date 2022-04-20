@@ -13,14 +13,22 @@ public class BoruvkaParallel {
     protected Map<Integer, Boolean> connectedMap;
     protected final AtomicInteger numActiveThreads; // threads currently executing code
     protected final AtomicInteger numWorkingThreads; // total threads either executing code or busy waiting
+    protected final AtomicInteger threadsWaitingNextStep;
     protected final int numProcessors;
     protected CSRGraph graph;
+    protected CSRGraph nextGraph;
+    protected ArrayList<Unit> nextOutDegrees;
 
     protected final Map<Integer, Set<Integer>> threadToLocalNodesMap;
     protected final Set<Thread> threads;
 
+    protected final Set<Node> oldNodes;
+    protected final Set<Edge> oldEdges;
+
     public BoruvkaParallel(int numProcessors, Set<Node> nodes, Set<Edge> edges){
         this.numProcessors = numProcessors;
+        oldNodes = nodes;
+        oldEdges = edges;
 
         newNodes = new ConcurrentLinkedQueue<>();
         connectedMap = new ConcurrentHashMap<>();
@@ -30,8 +38,10 @@ public class BoruvkaParallel {
 
         numActiveThreads = new AtomicInteger(numProcessors);
         numWorkingThreads = new AtomicInteger(numProcessors);
+        threadsWaitingNextStep = new AtomicInteger(numProcessors);
 
         graph = new CSRGraph(nodes, edges);
+        nextOutDegrees = new ArrayList<>(edges.size());
 
         int nodeNum = 0;
         int nodesPerThread = (int) Math.ceil(graph.numNodes / numWorkingThreads.get());
@@ -65,85 +75,119 @@ public class BoruvkaParallel {
 
         @Override
         public void run() {
-            // (a) find edge with minimum weight & add it to vertexMinEdge
             while(!localNodes.isEmpty()){
+                System.out.println();
+                // (a) find edge with minimum weight & add it to vertexMinEdge
                 for(Integer node: localNodes){
                     // iterate over outgoing edges from node
-                    int minWeight = Integer.MIN_VALUE;
+                    int minWeight = Integer.MAX_VALUE;
+                    int edge = -1;
                     int firstEdgeIndex = graph.getFirstEdge(node);
                     for(int i = firstEdgeIndex; i < firstEdgeIndex + graph.getOutDegree(node); i++){
                         int weight = graph.getWeight(i);
                         if(weight < minWeight){
                             minWeight = weight;
+                            edge = i;
                         }
                     }
-                    graph.setNodeMinEdge(node, minWeight);
+                    graph.setNodeMinEdge(node, edge);
                 }
-            }
 
-            // (b) Remove mirrored edges from vertexMinEdge
-            for(Integer node: localNodes){
-                if(node < graph.getDestination(node) &&
-                        // the successor of node is node itself
-                        graph.getDestination(graph.getNodeMinEdge(
-                                graph.getDestination(graph.getNodeMinEdge(node)))) == node){
-                    graph.setNodeMinEdge(node, null);
-                }
-            }
+                synchronizeStep();
 
-            // (c) initialize and propagate colors (components)
-            for(Integer node: localNodes){
-                Integer edge = graph.getNodeMinEdge(node);
-                // if edge is null, node is a representative for the component
-                if(edge == null){
-                    graph.setColor(node, node);
-                    newNodes.add(node);
-                }
-                // otherwise, find the representative for the component
-                else{
-                    graph.setColor(node, graph.getDestination(graph.getNodeMinEdge(node)));
-                }
-            }
-            // initialize new CSRGraph
-            CSRGraph newGraph = new CSRGraph(newNodes);
-
-            // (e) Count & assign edges after contraction
-            for(Integer node: localNodes){
-                // iterate over edges of node
-                for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
-                    int color = graph.getColor(node);
-
-                    // if the edge crosses components
-                    if(color != graph.getColor(graph.getDestination(i))){
-                        newGraph.incOutDegree(color);
+                // (b) Remove mirrored edges from vertexMinEdge
+                for(Integer node: localNodes){
+                    int otherNode = graph.getDestination(graph.getNodeMinEdge(
+                            graph.getDestination(graph.getNodeMinEdge(node))));
+                    if(node < graph.getDestination(node) &&
+                            // the successor of node is node itself
+                             otherNode == node){
+                        graph.setNodeMinEdge(node, null);
                     }
+                }
+
+                synchronizeStep();
+
+                // (c) initialize and propagate colors (components)
+                for(Integer node: localNodes){
+                    Integer edge = graph.getNodeMinEdge(node);
+                    // if edge is null, node is a representative for the component
+                    if(edge == -1){
+                        graph.setColor(node, node);
+                        newNodes.add(node);
+                    }
+                    // otherwise, find the representative for the component
                     else{
-                        connectedMap.put(node, true);
-                    }
-
-                }
-            }
-            // authority thread builds newFirstEdges, non-authority threads wait
-            buildNewFirstEdges(newGraph);
-
-            // (f) build new edges
-            for(Integer node: localNodes){
-                int newEdgePos = graph.getFirstEdge(graph.getColor(node));
-                for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
-                    if(!connectedMap.get(i)){
-                        graph.addDestination(newEdgePos, graph.getDestination(i));
-                        graph.addWeight(newEdgePos, graph.getWeight(i));
-                        newEdgePos++;
+                        int color = graph.getDestination(graph.getNodeMinEdge(node));
+                        while(graph.getNodeMinEdge(color) != -1){
+                            color = graph.getDestination(graph.getNodeMinEdge(color));
+                        }
+                        graph.setColor(node, color);
                     }
                 }
+
+                if(isAuthority){
+                    nextGraph = new CSRGraph(newNodes);
+                }
+                synchronizeStep();
+                System.out.println();
+
+                // (e) Count & assign edges after contraction
+                for(Integer node: localNodes){
+                    // iterate over edges of node
+                    for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
+                        int color = graph.getColor(node);
+
+                        // if the edge crosses components
+                        if(color != graph.getColor(graph.getDestination(i))){
+                            nextGraph.incOutDegree(color); // color needs to be mapped to new index
+                        }
+                        else{
+                            connectedMap.put(node, true);
+                        }
+                    }
+                }
+                synchronizeStep();
+
+                // authority thread builds newFirstEdges, non-authority threads wait
+                buildNewFirstEdges();
+
+                // (f) build new edges
+                for(Integer node: localNodes){
+                    int newEdgePos = graph.getFirstEdge(graph.getColor(node));
+                    for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
+                        if(!connectedMap.get(i)){
+                            nextGraph.addDestination(newEdgePos, graph.getDestination(i));
+                            nextGraph.addWeight(newEdgePos, graph.getWeight(i));
+                            newEdgePos++;
+                        }
+                    }
+                }
+                handoffNewStructures();
             }
-            System.out.println();
+            if(isAuthority){
+                while(numWorkingThreads.get() > 1){
+                    buildNewFirstEdges();
+                    handoffNewStructures();
+                }
+            }
+            else{
+                numWorkingThreads.decrementAndGet();
+            }
         }
 
-        public void buildNewFirstEdges(CSRGraph newGraph){
+        public void synchronizeStep(){
+            threadsWaitingNextStep.decrementAndGet();
+            while(threadsWaitingNextStep.get() > 0){}
+            if(isAuthority){
+                threadsWaitingNextStep.set(numWorkingThreads.get());
+            }
+        }
+
+        public void buildNewFirstEdges(){
             if(isAuthority){
                 while(numActiveThreads.get() > 1){}
-                newGraph.addFirstEdge(0, 0);
+                nextGraph.addFirstEdge(0, 0);
 
                 for(int i = 1; i < graph.numNodes; i++){
                     graph.addFirstEdge(i, graph.getOutDegree(i-1) + graph.getFirstEdge(i-1));
@@ -157,7 +201,7 @@ public class BoruvkaParallel {
             }
         }
 
-        public void handoffNewStructures(CSRGraph newGraph){
+        public void handoffNewStructures(){
             if(isAuthority){
                 while(numActiveThreads.get() > 1){}
 
@@ -188,7 +232,9 @@ public class BoruvkaParallel {
 
                 connectedMap.clear();
 
-                graph = newGraph;
+                graph = nextGraph;
+
+                numActiveThreads.set(numWorkingThreads.get());
             }
             else{
                 numActiveThreads.decrementAndGet();

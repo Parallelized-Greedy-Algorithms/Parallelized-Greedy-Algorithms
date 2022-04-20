@@ -34,9 +34,9 @@ public class BoruvkaDriver {
     public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
     static final int SEED = 5;
     static Random rng = new Random(SEED);
-    static final int NUM_NODES = 10;
+    static final int NUM_NODES = 8;
     static final int K_NEIGHBORS = 4; // should be > ln(NUM_NODES) && even
-    static final double PROB_REWIRE = 0.2;
+    static final double PROB_REWIRE = 0.8;
 
     public static void writeGraph(Graph graph) throws IOException {
         JGraphXAdapter<String, Edge> graphAdapter = new JGraphXAdapter<String, Edge>(graph);
