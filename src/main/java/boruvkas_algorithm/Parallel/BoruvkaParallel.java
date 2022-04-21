@@ -103,6 +103,8 @@ public class BoruvkaParallel {
                             // the successor of node is node itself
                              otherNode == node){
                         graph.setNodeMinEdge(node, null);
+                        // when you set a nodeMinEdge as null, it's possible to access it again, causing out
+                        // of index exception...
                     }
                 }
 
@@ -115,6 +117,7 @@ public class BoruvkaParallel {
                     if(edge == -1){
                         graph.setColor(node, node);
                         newNodes.add(node);
+                        graph.setFlag(node, 1);
                     }
                     // otherwise, find the representative for the component
                     else{
@@ -128,6 +131,10 @@ public class BoruvkaParallel {
 
                 if(isAuthority){
                     nextGraph = new CSRGraph(newNodes);
+                    // create new indexes for nodes
+                    for(int i = 1; i < graph.numNodes; i++){
+                        graph.addNewName(i, graph.getFlag(i-1) + graph.getNewName(i-1));
+                    }
                 }
                 synchronizeStep();
                 System.out.println();
@@ -140,7 +147,7 @@ public class BoruvkaParallel {
 
                         // if the edge crosses components
                         if(color != graph.getColor(graph.getDestination(i))){
-                            nextGraph.incOutDegree(color); // color needs to be mapped to new index
+                            nextGraph.incOutDegree(graph.getNewName(color)); // color needs to be mapped to new index
                         }
                         else{
                             connectedMap.put(node, true);

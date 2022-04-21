@@ -14,6 +14,8 @@ public class CSRGraph {
     private final ArrayList<Unit> outDegrees;
     private final List<Unit> nodeMinEdges; // pointer to minimum edge of node at index
     private final List<Unit> colors;
+    private final List<Unit> flag;
+    private final List<Unit> newNames;
 
     public CSRGraph(Collection<?> nodes){
         numNodes =  nodes.size();
@@ -21,12 +23,16 @@ public class CSRGraph {
         outDegrees = new ArrayList<>(numNodes);
         colors = new ArrayList<>(numNodes);
         nodeMinEdges = new ArrayList<>(numNodes);
+        flag = new ArrayList<>(numNodes);
+        newNames = new ArrayList<>(numNodes);
 
         for(int i = 0; i < numNodes; i++){
             firstEdges.add(new Unit());
             outDegrees.add(new Unit());
             colors.add(new Unit(-1));
             nodeMinEdges.add(new Unit());
+            flag.add(new Unit());
+            newNames.add(new Unit());
         }
     }
 
@@ -96,6 +102,14 @@ public class CSRGraph {
         return colors.get(node).value;
     }
 
+    public int getFlag(int node){
+        return flag.get(node).value;
+    }
+
+    public int getNewName(int node){
+        return newNames.get(node).value;
+    }
+
     public void setNodeMinEdge(int node, Integer edge){
         if(edge == null){
             nodeMinEdges.get(node).value = -1;
@@ -107,6 +121,11 @@ public class CSRGraph {
 
     public void setColor(int node, int color){
         colors.get(node).value = color;
+    }
+
+    public void setFlag(int node, int value){
+        flag.get(node).value = value;
+
     }
 
     public void incOutDegree(int node){
@@ -123,6 +142,9 @@ public class CSRGraph {
 
     public void addWeight(int edge, int weight){
         weights.get(edge).value = weight;
+    }
+    public void addNewName(int node, int newName){
+        newNames.get(node).value = newName;
     }
 
 
