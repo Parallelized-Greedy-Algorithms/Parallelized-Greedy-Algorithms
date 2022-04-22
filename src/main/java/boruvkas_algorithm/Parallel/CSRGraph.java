@@ -15,7 +15,8 @@ public class CSRGraph {
     private final List<Unit> nodeMinEdges; // pointer to minimum edge of node at index
     private final List<Unit> colors;
     private final List<Unit> flag;
-    private final List<Unit> newNames;
+    private final List<Unit> newNames; // map of node to new node name in nextGraph (ONLY for representatives)
+    private final List<Unit> mapOldNewNames;
 
     public CSRGraph(Collection<?> nodes){
         numNodes =  nodes.size();
@@ -25,6 +26,7 @@ public class CSRGraph {
         nodeMinEdges = new ArrayList<>(numNodes);
         flag = new ArrayList<>(numNodes);
         newNames = new ArrayList<>(numNodes);
+        mapOldNewNames = new ArrayList<>(numNodes);
 
         for(int i = 0; i < numNodes; i++){
             firstEdges.add(new Unit());
@@ -33,6 +35,7 @@ public class CSRGraph {
             nodeMinEdges.add(new Unit());
             flag.add(new Unit());
             newNames.add(new Unit());
+            mapOldNewNames.add(new Unit(i));
         }
     }
 
@@ -70,12 +73,14 @@ public class CSRGraph {
         System.out.println();
     }
 
-    public void setDestinations(List<Unit> destinations){
-        this.destinations = destinations;
-    }
+    public void initializeEdges(int size){
+        destinations = new ArrayList<>(size);
+        weights = new ArrayList<>(size);
 
-    public void setWeights(List<Unit> weights){
-        this.weights = weights;
+        for(int i = 0; i < size; i++){
+            destinations.add(new Unit());
+            weights.add(new Unit());
+        }
     }
 
     public int getFirstEdge(int node){
@@ -110,6 +115,10 @@ public class CSRGraph {
         return newNames.get(node).value;
     }
 
+    public int getMapNewName(int oldNode){
+        return mapOldNewNames.get(oldNode).value;
+    }
+
     public void setNodeMinEdge(int node, Integer edge){
         if(edge == null){
             nodeMinEdges.get(node).value = -1;
@@ -125,7 +134,16 @@ public class CSRGraph {
 
     public void setFlag(int node, int value){
         flag.get(node).value = value;
+    }
 
+    // for nextGraph
+    public void setNameMap(int oldNode, int newNode){
+        if(!mapOldNewNames.contains(oldNode)){
+            mapOldNewNames.add(new Unit(newNode));
+        }
+        else{
+            mapOldNewNames.get(oldNode).value = newNode;
+        }
     }
 
     public void incOutDegree(int node){

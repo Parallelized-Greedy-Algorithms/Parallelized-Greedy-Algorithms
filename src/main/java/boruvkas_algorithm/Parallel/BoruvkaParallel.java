@@ -6,14 +6,18 @@ import boruvkas_algorithm.Sequential.Node;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class BoruvkaParallel {
     protected Queue<Integer> newNodes;
     protected Map<Integer, Boolean> connectedMap;
     protected final AtomicInteger numActiveThreads; // threads currently executing code
     protected final AtomicInteger numWorkingThreads; // total threads either executing code or busy waiting
-    protected final AtomicInteger threadsWaitingNextStep;
+    protected final AtomicInteger numThreadsLeftToSynchronize;
     protected final int numProcessors;
     protected CSRGraph graph;
     protected CSRGraph nextGraph;
@@ -24,6 +28,9 @@ public class BoruvkaParallel {
 
     protected final Set<Node> oldNodes;
     protected final Set<Edge> oldEdges;
+
+    protected final Lock lock;
+    protected final Condition isSleeping;
 
     public BoruvkaParallel(int numProcessors, Set<Node> nodes, Set<Edge> edges){
         this.numProcessors = numProcessors;
@@ -38,15 +45,21 @@ public class BoruvkaParallel {
 
         numActiveThreads = new AtomicInteger(numProcessors);
         numWorkingThreads = new AtomicInteger(numProcessors);
-        threadsWaitingNextStep = new AtomicInteger(numProcessors);
+        numThreadsLeftToSynchronize = new AtomicInteger(numProcessors);
 
         graph = new CSRGraph(nodes, edges);
         nextOutDegrees = new ArrayList<>(edges.size());
 
+        lock = new ReentrantLock();
+        isSleeping = lock.newCondition();
+
         int nodeNum = 0;
         int nodesPerThread = (int) Math.ceil(graph.numNodes / numWorkingThreads.get());
+        if (nodesPerThread == 0) {
+            nodesPerThread = 1;
+        }
         for(int i = 0; i < numProcessors; i++){
-            Set<Integer> localNodes = new HashSet<>();
+            Set<Integer> localNodes = new LinkedHashSet<>();
             for(int j = 0; j < nodesPerThread; j++){
                 if(nodeNum < graph.numNodes){
                     localNodes.add(nodeNum++);
@@ -59,6 +72,7 @@ public class BoruvkaParallel {
             threads.add(new Thread(new Worker(i == 0 ? true : false, i, localNodes)));
             threadToLocalNodesMap.put(i, localNodes);
         }
+        System.out.println();
 
     }
 
@@ -97,14 +111,15 @@ public class BoruvkaParallel {
 
                 // (b) Remove mirrored edges from vertexMinEdge
                 for(Integer node: localNodes){
-                    int otherNode = graph.getDestination(graph.getNodeMinEdge(
-                            graph.getDestination(graph.getNodeMinEdge(node))));
-                    if(node < graph.getDestination(node) &&
-                            // the successor of node is node itself
-                             otherNode == node){
+                    // node has smaller ID than its successor
+                    if(node < graph.getDestination(graph.getNodeMinEdge(node)) &&
+                            // the successor was already found to be a representative node
+                            (
+//                            (graph.getNodeMinEdge(graph.getDestination(graph.getNodeMinEdge(node))) == -1 ||
+                                    // the successor of node is node itself
+                                    graph.getMapNewName(graph.getDestination(graph.getNodeMinEdge(graph.getMapNewName(
+                                    graph.getDestination(graph.getNodeMinEdge(node)))))) == node)){
                         graph.setNodeMinEdge(node, null);
-                        // when you set a nodeMinEdge as null, it's possible to access it again, causing out
-                        // of index exception...
                     }
                 }
 
@@ -129,28 +144,36 @@ public class BoruvkaParallel {
                     }
                 }
 
+                synchronizeStep();
                 if(isAuthority){
                     nextGraph = new CSRGraph(newNodes);
                     // create new indexes for nodes
+                    nextGraph.setNameMap(0, 0);
                     for(int i = 1; i < graph.numNodes; i++){
-                        graph.addNewName(i, graph.getFlag(i-1) + graph.getNewName(i-1));
+                        int newName = graph.getFlag(i-1) + graph.getNewName(i-1);
+                        graph.addNewName(i, newName);
+                        nextGraph.setNameMap(i, newName);
                     }
                 }
                 synchronizeStep();
-                System.out.println();
 
                 // (e) Count & assign edges after contraction
                 for(Integer node: localNodes){
+                    // only iterate on representative nodes
+                    if(graph.getFlag(node) != 1){
+                        continue;
+                    }
+                    int color = graph.getColor(node);
                     // iterate over edges of node
                     for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
-                        int color = graph.getColor(node);
 
                         // if the edge crosses components
                         if(color != graph.getColor(graph.getDestination(i))){
-                            nextGraph.incOutDegree(graph.getNewName(color)); // color needs to be mapped to new index
+                            nextGraph.incOutDegree(graph.getNewName(color));
+                            connectedMap.put(i, false);
                         }
                         else{
-                            connectedMap.put(node, true);
+                            connectedMap.put(i, true);
                         }
                     }
                 }
@@ -159,18 +182,25 @@ public class BoruvkaParallel {
                 // authority thread builds newFirstEdges, non-authority threads wait
                 buildNewFirstEdges();
 
-                // (f) build new edges
+                // (f) build new edges from old graph
                 for(Integer node: localNodes){
-                    int newEdgePos = graph.getFirstEdge(graph.getColor(node));
-                    for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
-                        if(!connectedMap.get(i)){
-                            nextGraph.addDestination(newEdgePos, graph.getDestination(i));
-                            nextGraph.addWeight(newEdgePos, graph.getWeight(i));
+                    // only iterate on representative nodes
+                    if(graph.getFlag(node) != 1){
+                        continue;
+                    }
+                    // get the representative for the node's component & pass it to newName
+                    // using the new name, get the first edge in the edges arrays
+                    int newEdgePos = nextGraph.getFirstEdge(graph.getNewName(graph.getColor(node)));
+                    for(int edge = graph.getFirstEdge(node); edge < graph.getFirstEdge(node) + graph.getOutDegree(node); edge++){
+                        if(!connectedMap.get(edge)){
+                            nextGraph.addDestination(newEdgePos, graph.getDestination(edge));
+                            nextGraph.addWeight(newEdgePos, graph.getWeight(edge));
                             newEdgePos++;
                         }
                     }
                 }
                 handoffNewStructures();
+                synchronizeStep();
             }
             if(isAuthority){
                 while(numWorkingThreads.get() > 1){
@@ -181,24 +211,41 @@ public class BoruvkaParallel {
             else{
                 numWorkingThreads.decrementAndGet();
             }
+            System.out.println();
         }
 
         public void synchronizeStep(){
-            threadsWaitingNextStep.decrementAndGet();
-            while(threadsWaitingNextStep.get() > 0){}
-            if(isAuthority){
-                threadsWaitingNextStep.set(numWorkingThreads.get());
+            lock.lock();
+            if(numThreadsLeftToSynchronize.get() == 1){
+                numThreadsLeftToSynchronize.set(numWorkingThreads.get());
+                isSleeping.signalAll();
             }
+            else{
+                try {
+                    numThreadsLeftToSynchronize.decrementAndGet();
+                    isSleeping.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            lock.unlock();
         }
 
         public void buildNewFirstEdges(){
             if(isAuthority){
+                // wait until authority is only active thread
                 while(numActiveThreads.get() > 1){}
-                nextGraph.addFirstEdge(0, 0);
+                int i;
 
-                for(int i = 1; i < graph.numNodes; i++){
-                    graph.addFirstEdge(i, graph.getOutDegree(i-1) + graph.getFirstEdge(i-1));
+                // perform exclusive prefix sum
+                nextGraph.addFirstEdge(0, 0);
+                for(i = 1; i < nextGraph.numNodes; i++){
+                    nextGraph.addFirstEdge(i, nextGraph.getOutDegree(i-1) + nextGraph.getFirstEdge(i-1));
                 }
+                // initialize edges
+                nextGraph.initializeEdges(nextGraph.getFirstEdge(i-1)+nextGraph.getOutDegree(i-1));
+
+                // send done signal
                 numActiveThreads.set(numWorkingThreads.get());
             }
             else{
@@ -218,20 +265,23 @@ public class BoruvkaParallel {
                 }
 
                 int numNodesPerThread = (int) Math.ceil(newNodes.size()/numWorkingThreads.get());
+                if(numNodesPerThread == 0){
+                    numNodesPerThread = 1;
+                }
 
                 // evenly distribute new nodes amongst each thread
                 for(Set<Integer> nodes: allNodes){
                     for(int i = 0; i < numNodesPerThread; i++){
                         if(i == numNodesPerThread-1){
-                            if(!nodes.isEmpty()){
-                                nodes.add(newNodes.remove());
+                            if(!newNodes.isEmpty()){
+                                nodes.add(graph.getNewName(newNodes.remove()));
                             }
                             else{
                                 break;
                             }
                         }
                         else{
-                            nodes.add(newNodes.remove());
+                            nodes.add(graph.getNewName(newNodes.remove()));
                         }
                     }
                 }
@@ -248,9 +298,11 @@ public class BoruvkaParallel {
                 while(numActiveThreads.get() != numWorkingThreads.get()){}
             }
         }
+
     }
 
-    public void run(){
+
+    public void run() throws InterruptedException {
         for(Thread thread: threads){
             thread.start();
         }

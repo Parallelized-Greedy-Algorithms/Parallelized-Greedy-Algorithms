@@ -31,10 +31,11 @@ import java.util.function.Supplier;
 
 public class BoruvkaDriver {
     private static final Logger log = LogManager.getLogger(BoruvkaDriver.class);
-    public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
+//    public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
+    public static final int PROCESSORS = 2;
     static final int SEED = 5;
     static Random rng = new Random(SEED);
-    static final int NUM_NODES = 8;
+    static final int NUM_NODES = 10;
     static final int K_NEIGHBORS = 4; // should be > ln(NUM_NODES) && even
     static final double PROB_REWIRE = 0.8;
 
@@ -55,7 +56,7 @@ public class BoruvkaDriver {
         ImageIO.write(image, "PNG", imgFile);
     }
 
-    public static void main(String[] args){
+    public static void main(String[] args) throws InterruptedException {
         Configurator.initialize(new DefaultConfiguration());
         Configurator.setRootLevel(Level.INFO);
         Supplier<Node> nodeSupplier = new Supplier<>() {
