@@ -35,8 +35,8 @@ public class BoruvkaDriver {
 //    public static final int PROCESSORS = 2;
     static final int SEED = 5;
     static Random rng = new Random(SEED);
-    static final int NUM_NODES = 10;
-    static final int K_NEIGHBORS = 4; // should be > ln(NUM_NODES) && even
+    static final int NUM_NODES = 97;
+    static final int K_NEIGHBORS = 6; // should be > ln(NUM_NODES) && even
     static final double PROB_REWIRE = 0.8;
 
     public static void writeGraph(Graph graph) throws IOException {
@@ -57,7 +57,7 @@ public class BoruvkaDriver {
     }
 
     public static void stats(Set<Edge> edges){
-        log.info("Edges: " + edges);
+//        log.info("Edges: " + edges);
         log.info("Number edges: " + edges.size());
         log.info("Minimum sum: " + calculateSum(edges));
     }
@@ -118,10 +118,5 @@ public class BoruvkaDriver {
         stats(parallelEdges);
         boolean isEqual = (calculateSum(seqEdges) == calculateSum(parallelEdges));
         log.info("Sequential & parallel are equivalent: " + isEqual);
-
-        if(isEqual){
-            parallelEdges.removeAll(seqEdges);
-            log.info("Diff: " + parallelEdges);
-        }
     }
 }

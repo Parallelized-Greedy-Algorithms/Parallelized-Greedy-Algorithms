@@ -5,6 +5,7 @@ import boruvkas_algorithm.Sequential.Node;
 
 import javax.swing.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -20,7 +21,7 @@ public class CSRGraph {
     private final List<Unit> flag;
     private final List<Unit> newNames; // map of node to new node name in nextGraph (ONLY for representatives)
     private List<Unit> mapOldNewNames;
-    private final List<AtomicInteger> nextEdges;
+    private final Map<Integer, AtomicInteger> nextEdges;
 
     private CSRGraph(Collection<?> nodes){
         numNodes =  nodes.size();
@@ -31,7 +32,7 @@ public class CSRGraph {
         flag = new ArrayList<>(numNodes);
         newNames = new ArrayList<>(numNodes);
         mapOldNewNames = new ArrayList<>(numNodes);
-        nextEdges = new ArrayList<>(numNodes);
+        nextEdges = new ConcurrentHashMap<>(numNodes);
 
         for(int i = 0; i < numNodes; i++){
             firstEdges.add(new Unit());
@@ -103,7 +104,7 @@ public class CSRGraph {
 
     public void initializeNextEdges(){
         for(int i = 0; i < numNodes; i++){
-            nextEdges.add(new AtomicInteger(firstEdges.get(i).value));
+            nextEdges.put(i, new AtomicInteger(firstEdges.get(i).value));
         }
     }
 
