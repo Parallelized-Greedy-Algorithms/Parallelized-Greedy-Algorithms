@@ -3,7 +3,10 @@ package boruvkas_algorithm.Parallel;
 import boruvkas_algorithm.Sequential.Edge;
 import boruvkas_algorithm.Sequential.Node;
 
+import javax.swing.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 // structure built for shared memory architecture to avoid false sharing
 public class CSRGraph {
@@ -16,9 +19,10 @@ public class CSRGraph {
     private final List<Unit> colors;
     private final List<Unit> flag;
     private final List<Unit> newNames; // map of node to new node name in nextGraph (ONLY for representatives)
-    private final List<Unit> mapOldNewNames;
+    private List<Unit> mapOldNewNames;
+    private final List<AtomicInteger> nextEdges;
 
-    public CSRGraph(Collection<?> nodes){
+    private CSRGraph(Collection<?> nodes){
         numNodes =  nodes.size();
         firstEdges = new ArrayList<>(numNodes);
         outDegrees = new ArrayList<>(numNodes);
@@ -27,6 +31,7 @@ public class CSRGraph {
         flag = new ArrayList<>(numNodes);
         newNames = new ArrayList<>(numNodes);
         mapOldNewNames = new ArrayList<>(numNodes);
+        nextEdges = new ArrayList<>(numNodes);
 
         for(int i = 0; i < numNodes; i++){
             firstEdges.add(new Unit());
@@ -37,6 +42,19 @@ public class CSRGraph {
             newNames.add(new Unit());
             mapOldNewNames.add(new Unit(i));
         }
+    }
+
+    public CSRGraph(Collection<?> nodes, int oldNumNodes){
+        this(nodes);
+        for(int i = nodes.size(); i < oldNumNodes; i++){
+            mapOldNewNames.add(new Unit(i));
+        }
+    }
+
+    public CSRGraph(Collection<?> nodes, int oldNumNodes, List<Unit> destinations, List<Unit> weights){
+        this(nodes, oldNumNodes);
+        this.destinations = destinations;
+        this.weights = weights;
     }
 
     public CSRGraph(Set<Node> nodes, Set<Edge> edges){
@@ -81,6 +99,16 @@ public class CSRGraph {
             destinations.add(new Unit());
             weights.add(new Unit());
         }
+    }
+
+    public void initializeNextEdges(){
+        for(int i = 0; i < numNodes; i++){
+            nextEdges.add(new AtomicInteger(firstEdges.get(i).value));
+        }
+    }
+
+    public int getNextEdge(int node){
+        return nextEdges.get(node).getAndIncrement();
     }
 
     public int getFirstEdge(int node){
@@ -138,12 +166,7 @@ public class CSRGraph {
 
     // for nextGraph
     public void setNameMap(int oldNode, int newNode){
-        if(!mapOldNewNames.contains(oldNode)){
-            mapOldNewNames.add(new Unit(newNode));
-        }
-        else{
-            mapOldNewNames.get(oldNode).value = newNode;
-        }
+        mapOldNewNames.get(oldNode).value = newNode;
     }
 
     public void incOutDegree(int node){
@@ -163,6 +186,32 @@ public class CSRGraph {
     }
     public void addNewName(int node, int newName){
         newNames.get(node).value = newName;
+    }
+
+    public void setEdges(List<Unit> destinations, List<Unit> weights){
+        this.destinations = destinations;
+        this.weights = weights;
+    }
+
+    public List<Unit> getDestinations(){
+        return destinations;
+    }
+
+    public List<Unit> getWeights(){
+        return weights;
+    }
+
+    public void removeEdges(Set<Integer> edges){
+        destinations.removeAll(edges);
+        weights.removeAll(edges);
+    }
+
+    public void setMap(List<Unit> map){
+        mapOldNewNames = map;
+    }
+
+    public List<Unit> getMap(){
+        return mapOldNewNames;
     }
 
 

@@ -30,9 +30,9 @@ import java.util.*;
 import java.util.function.Supplier;
 
 public class BoruvkaDriver {
-    private static final Logger log = LogManager.getLogger(BoruvkaDriver.class);
-//    public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
-    public static final int PROCESSORS = 2;
+    private static final Logger log = LogManager.getLogger("BoruvkaDriver");
+    public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
+//    public static final int PROCESSORS = 2;
     static final int SEED = 5;
     static Random rng = new Random(SEED);
     static final int NUM_NODES = 10;
@@ -54,6 +54,19 @@ public class BoruvkaDriver {
         String fileName = "graph_SM_" + NUM_NODES + "-" + K_NEIGHBORS + "-" + PROB_REWIRE;
         File imgFile = new File("src/test/resources/" + fileName + ".png");
         ImageIO.write(image, "PNG", imgFile);
+    }
+
+    public static void stats(Set<Edge> edges){
+        log.info("Edges: " + edges);
+        log.info("Number edges: " + edges.size());
+        log.info("Minimum sum: " + calculateSum(edges));
+    }
+    public static int calculateSum(Set<Edge> edges){
+        int sum = 0;
+        for(Edge edge: edges){
+            sum += edge.getDistance();
+        }
+        return sum;
     }
 
     public static void main(String[] args) throws InterruptedException {
@@ -94,17 +107,21 @@ public class BoruvkaDriver {
 //        }
 
 
-//        BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
-//        Set<Edge> minEdges = sequential.run();
-//        int sum = 0;
-//        for(Edge edge: minEdges){
-//            sum += edge.getDistance();
-//        }
-//        log.info("Number nodes: " + graph.vertexSet().size());
-//        log.info("Number edges: " + minEdges.size());
-//        log.info("Minimum sum: " + sum);
+        BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
+        Set<Edge> seqEdges = sequential.run();
+        log.info("Sequential:");
+        stats(seqEdges);
 
         BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
-        parallel.run();
+        Set<Edge> parallelEdges = parallel.run();
+        log.info("Parallel:");
+        stats(parallelEdges);
+        boolean isEqual = (calculateSum(seqEdges) == calculateSum(parallelEdges));
+        log.info("Sequential & parallel are equivalent: " + isEqual);
+
+        if(isEqual){
+            parallelEdges.removeAll(seqEdges);
+            log.info("Diff: " + parallelEdges);
+        }
     }
 }

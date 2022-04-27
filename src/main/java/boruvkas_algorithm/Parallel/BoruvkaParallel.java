@@ -6,7 +6,6 @@ import boruvkas_algorithm.Sequential.Node;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -31,6 +30,11 @@ public class BoruvkaParallel {
 
     protected final Lock lock;
     protected final Condition isSleeping;
+    protected final Condition readyForAuthority;
+    protected final Condition readyForNonAuthority;
+
+    protected final Set<Edge> connectedEdges;
+    protected final Map<Integer, Integer> vertexToComponentMap;
 
     public BoruvkaParallel(int numProcessors, Set<Node> nodes, Set<Edge> edges){
         this.numProcessors = numProcessors;
@@ -52,28 +56,31 @@ public class BoruvkaParallel {
 
         lock = new ReentrantLock();
         isSleeping = lock.newCondition();
+        readyForAuthority = lock.newCondition();
+        readyForNonAuthority = lock.newCondition();
+
+        connectedEdges = ConcurrentHashMap.newKeySet();
+        vertexToComponentMap = new HashMap<>();
+        for(int i = 0; i < nodes.size(); i++){
+            vertexToComponentMap.put(i, i);
+        }
 
         int nodeNum = 0;
-        int nodesPerThread = (int) Math.ceil(graph.numNodes / numWorkingThreads.get());
-        if (nodesPerThread == 0) {
-            nodesPerThread = 1;
-        }
+        int baseNodesPerThread = graph.numNodes / numWorkingThreads.get();
+        int extraNodesPerThread = graph.numNodes % numWorkingThreads.get();
         for(int i = 0; i < numProcessors; i++){
             Set<Integer> localNodes = new LinkedHashSet<>();
-            for(int j = 0; j < nodesPerThread; j++){
-                if(nodeNum < graph.numNodes){
-                    localNodes.add(nodeNum++);
-                }
-                else{
-                    break;
-                }
+            for(int j = 0; j < baseNodesPerThread; j++){
+                localNodes.add(nodeNum++);
+            }
+            if(extraNodesPerThread-- > 0){
+                localNodes.add(nodeNum++);
             }
 
             threads.add(new Thread(new Worker(i == 0 ? true : false, i, localNodes)));
             threadToLocalNodesMap.put(i, localNodes);
         }
         System.out.println();
-
     }
 
     private class Worker implements Runnable{
@@ -89,9 +96,13 @@ public class BoruvkaParallel {
 
         @Override
         public void run() {
-            while(!localNodes.isEmpty()){
-                System.out.println();
-                // (a) find edge with minimum weight & add it to vertexMinEdge
+            while(!localNodes.isEmpty() && graph.numNodes > 1){
+                /** (a) Find minimum edge per vertex
+                 *  The algorithm starts off by selecting the minimum weight edge for each vertex
+                 *  When the vertex has multiple edges with the same minimum height, the edge with
+                 *  the smallest destination vertex id is selected.
+                 *  The selected minimum edge is stored in vertexMinEdge
+                 */
                 for(Integer node: localNodes){
                     // iterate over outgoing edges from node
                     int minWeight = Integer.MAX_VALUE;
@@ -109,23 +120,37 @@ public class BoruvkaParallel {
 
                 synchronizeStep();
 
-                // (b) Remove mirrored edges from vertexMinEdge
+                /** (b) Remove mirrored edges from vertexMinEdge
+                 *  Mirrored edges are removed if the successor of a vertex successor is the vertex itself
+                 *  When a mirrored edge is found, the edge is removed once from the vertexMinEdge list
+                 */
+                Set<Integer> nodesToRemove = new HashSet<>();
                 for(Integer node: localNodes){
                     // node has smaller ID than its successor
-                    if(node < graph.getDestination(graph.getNodeMinEdge(node)) &&
+                    if(node < (vertexToComponentMap.get(graph.getDestination(graph.getNodeMinEdge(node)))) &&
                             // the successor was already found to be a representative node
                             (
-//                            (graph.getNodeMinEdge(graph.getDestination(graph.getNodeMinEdge(node))) == -1 ||
                                     // the successor of node is node itself
-                                    graph.getMapNewName(graph.getDestination(graph.getNodeMinEdge(graph.getMapNewName(
-                                    graph.getDestination(graph.getNodeMinEdge(node)))))) == node)){
-                        graph.setNodeMinEdge(node, null);
+                                    vertexToComponentMap.get(graph.getDestination(graph.getNodeMinEdge(vertexToComponentMap.get(
+                                    graph.getDestination(graph.getNodeMinEdge(node)))))).equals(node))){
+                        nodesToRemove.add(node);
                     }
                 }
 
                 synchronizeStep();
+                // TODO: is this needed?
+                for(Integer node: nodesToRemove){
+                    graph.setNodeMinEdge(node, null);
+                }
+                synchronizeStep();
 
-                // (c) initialize and propagate colors (components)
+                /** (c) initialize and propagate colors (components)
+                 *  In order to contract the graph, connected components must be identified.
+                 *  Each connected component will be a super-vertex in the contracted graph
+                 *  Each vertex is initialized with the same color as their successor's id in graph.colors.
+                 *  If the vertex has no successor, its successor is set to itself.
+                 *  This process repeats until it converges.
+                 */
                 for(Integer node: localNodes){
                     Integer edge = graph.getNodeMinEdge(node);
                     // if edge is null, node is a representative for the component
@@ -136,89 +161,134 @@ public class BoruvkaParallel {
                     }
                     // otherwise, find the representative for the component
                     else{
-                        int color = graph.getDestination(graph.getNodeMinEdge(node));
+                        int oldColor = graph.getDestination(graph.getNodeMinEdge(node));
+                        int color = vertexToComponentMap.get(oldColor);
                         while(graph.getNodeMinEdge(color) != -1){
-                            color = graph.getDestination(graph.getNodeMinEdge(color));
+                            oldColor = graph.getDestination(graph.getNodeMinEdge(color));
+                            color = vertexToComponentMap.get(oldColor);
                         }
-                        graph.setColor(node, color);
+                        graph.setColor(node, color); // TODO iteration #2 doesn't add colors correctly
+                        connectedEdges.add(new Edge(new Node(node), new Node(graph.getDestination(graph.getNodeMinEdge(node))), graph.getWeight(graph.getNodeMinEdge(node))));
                     }
                 }
 
                 synchronizeStep();
+                /** (d) create new vertex IDs
+                 *  After converging, any vertex successor that is in the vertex itself will be called
+                 *  the representative vertex for its component and is marked with a 1 in the flag array graph.flag.
+                 *  An exclusive prefix sum is computed on the flag array to compute the new indices for the
+                 *  representative nodes.
+                 */
                 if(isAuthority){
-                    nextGraph = new CSRGraph(newNodes);
+//                    nextGraph = new CSRGraph(newNodes, graph.numNodes, graph.getDestinations(), graph.getWeights());
+                    nextGraph = new CSRGraph(newNodes, graph.numNodes);
                     // create new indexes for nodes
                     nextGraph.setNameMap(0, 0);
+                    boolean hasSetAleastOnce = false;
                     for(int i = 1; i < graph.numNodes; i++){
                         int newName = graph.getFlag(i-1) + graph.getNewName(i-1);
                         graph.addNewName(i, newName);
-                        nextGraph.setNameMap(i, newName);
+                        // correctly set the name map for representative nodes
+                        // from nextGraph's current node to its previously named node
+                        if(graph.getFlag(i) == 1){
+                            nextGraph.setNameMap(i, newName);
+                        }
+                    }
+                    // correctly sets name map for non-representative nodes
+                    for(int i = 0; i < graph.numNodes; i++){
+                        if(graph.getFlag(i) == 0){
+                            nextGraph.setNameMap(i, nextGraph.getMapNewName(graph.getColor(i)));
+                        }
                     }
                 }
+
                 synchronizeStep();
 
-                // (e) Count & assign edges after contraction
+                /** (e) Count, assign, and insert new edges after contraction
+                 *  To build edge arrays for the contracted graph, it is first necessary to identify how
+                 *  many edges each super-vertex will have, in order to assign new edge ids to the super-vertices.
+                 *  This is achieved using a simple kernel that counts the number of edges that cross the
+                 *  component for each vertex, and adds it to the outdegree list of its corresponding super-vertex.
+                 *  An exclusive prefix sum is computed on the outdegree array in buildNewFirstEdges() to
+                 *  build the firstedges list with the new edge indices.
+                 */
                 for(Integer node: localNodes){
-                    // only iterate on representative nodes
-                    if(graph.getFlag(node) != 1){
-                        continue;
-                    }
                     int color = graph.getColor(node);
                     // iterate over edges of node
                     for(int i = graph.getFirstEdge(node); i < graph.getFirstEdge(node) + graph.getOutDegree(node); i++){
 
                         // if the edge crosses components
-                        if(color != graph.getColor(graph.getDestination(i))){
+                        if(color != graph.getColor(vertexToComponentMap.get(graph.getDestination(i)))){
                             nextGraph.incOutDegree(graph.getNewName(color));
-                            connectedMap.put(i, false);
+                            connectedMap.put(i, false); //TODO : unneeded
                         }
                         else{
-                            connectedMap.put(i, true);
+                            connectedMap.put(i, true); // TODO: unneeded
                         }
                     }
                 }
                 synchronizeStep();
 
                 // authority thread builds newFirstEdges, non-authority threads wait
-                buildNewFirstEdges();
+                try {
+                    buildNewFirstEdges();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
 
-                // (f) build new edges from old graph
+                /** (f) build new edges from old graph
+                 *  All edges that cross components are added to the contracted graph.
+                 */
                 for(Integer node: localNodes){
-                    // only iterate on representative nodes
-                    if(graph.getFlag(node) != 1){
-                        continue;
-                    }
-                    // get the representative for the node's component & pass it to newName
-                    // using the new name, get the first edge in the edges arrays
-                    int newEdgePos = nextGraph.getFirstEdge(graph.getNewName(graph.getColor(node)));
                     for(int edge = graph.getFirstEdge(node); edge < graph.getFirstEdge(node) + graph.getOutDegree(node); edge++){
                         if(!connectedMap.get(edge)){
+                            int newEdgePos = nextGraph.getNextEdge(graph.getNewName(graph.getColor(node)));
                             nextGraph.addDestination(newEdgePos, graph.getDestination(edge));
                             nextGraph.addWeight(newEdgePos, graph.getWeight(edge));
                             newEdgePos++;
                         }
                     }
                 }
-                handoffNewStructures();
-                synchronizeStep();
+                try {
+                    handoffNewStructures();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             }
             if(isAuthority){
                 while(numWorkingThreads.get() > 1){
-                    buildNewFirstEdges();
-                    handoffNewStructures();
+                    try {
+                        buildNewFirstEdges();
+                        handoffNewStructures();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
             }
             else{
+                numThreadsLeftToSynchronize.decrementAndGet();
+                numActiveThreads.decrementAndGet();
                 numWorkingThreads.decrementAndGet();
+                if(numThreadsLeftToSynchronize.get() <= 1){
+                    awakenThreads();
+                }
             }
-            System.out.println();
+        }
+
+        public void awakenThreads(){
+            lock.lock();
+            isSleeping.signalAll();
+            lock.unlock();
         }
 
         public void synchronizeStep(){
+//            if(numWorkingThreads.get() == 1){
+//                return;
+//            }
             lock.lock();
-            if(numThreadsLeftToSynchronize.get() == 1){
+            if(numThreadsLeftToSynchronize.get() <= 1){
                 numThreadsLeftToSynchronize.set(numWorkingThreads.get());
-                isSleeping.signalAll();
+                isSleeping.signalAll(); // signal all sleeping threads to wake up
             }
             else{
                 try {
@@ -231,10 +301,14 @@ public class BoruvkaParallel {
             lock.unlock();
         }
 
-        public void buildNewFirstEdges(){
+        public void buildNewFirstEdges() throws InterruptedException {
+            lock.lock();
             if(isAuthority){
                 // wait until authority is only active thread
-                while(numActiveThreads.get() > 1){}
+                if(numActiveThreads.get() > 1){
+                    readyForAuthority.await();
+                }
+//                while(numActiveThreads.get() > 1){}
                 int i;
 
                 // perform exclusive prefix sum
@@ -242,22 +316,36 @@ public class BoruvkaParallel {
                 for(i = 1; i < nextGraph.numNodes; i++){
                     nextGraph.addFirstEdge(i, nextGraph.getOutDegree(i-1) + nextGraph.getFirstEdge(i-1));
                 }
+
+                // initialize nextEdges
+                nextGraph.initializeNextEdges();
+
                 // initialize edges
                 nextGraph.initializeEdges(nextGraph.getFirstEdge(i-1)+nextGraph.getOutDegree(i-1));
 
                 // send done signal
                 numActiveThreads.set(numWorkingThreads.get());
+                readyForNonAuthority.signalAll();
             }
             else{
                 numActiveThreads.decrementAndGet();
                 // busy wait until authority indicates finished by setting numActiveThreads to numWorkingThreads
-                while(numActiveThreads.get() != numWorkingThreads.get()){}
+//                while(numActiveThreads.get() != numWorkingThreads.get()){}
+                if(numActiveThreads.get() <= 1){
+                    readyForAuthority.signalAll();
+                }
+                readyForNonAuthority.await();
             }
+            lock.unlock();
         }
 
-        public void handoffNewStructures(){
+        public void handoffNewStructures() throws InterruptedException {
+            lock.lock();
             if(isAuthority){
-                while(numActiveThreads.get() > 1){}
+//                while(numActiveThreads.get() > 1){}
+                if(numActiveThreads.get() > 1){
+                    readyForAuthority.await();
+                }
 
                 Collection<Set<Integer>> allNodes = threadToLocalNodesMap.values();
                 for(Set<Integer> nodes: allNodes){
@@ -287,24 +375,38 @@ public class BoruvkaParallel {
                 }
                 assert(newNodes.isEmpty());
 
+                // update vertex map
+                for(Map.Entry<Integer, Integer> entry: vertexToComponentMap.entrySet()){
+                    // set the new color of every vertex to the MapNewName value
+                    entry.setValue(nextGraph.getMapNewName(entry.getValue()));
+                }
+
                 connectedMap.clear();
 
                 graph = nextGraph;
 
                 numActiveThreads.set(numWorkingThreads.get());
+                readyForNonAuthority.signalAll();
             }
             else{
                 numActiveThreads.decrementAndGet();
-                while(numActiveThreads.get() != numWorkingThreads.get()){}
+//                while(numActiveThreads.get() != numWorkingThreads.get()){}
+                if(numActiveThreads.get() <= 1){
+                    readyForAuthority.signalAll();
+                }
+                readyForNonAuthority.await();
             }
+            lock.unlock();
         }
 
     }
 
 
-    public void run() throws InterruptedException {
+    public Set<Edge> run() throws InterruptedException {
         for(Thread thread: threads){
             thread.start();
         }
+        while(numWorkingThreads.get() > 1){}
+        return connectedEdges;
     }
 }
