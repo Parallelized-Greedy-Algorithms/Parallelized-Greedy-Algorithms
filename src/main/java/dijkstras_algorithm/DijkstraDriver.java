@@ -7,6 +7,7 @@ import org.apache.logging.log4j.core.config.DefaultConfiguration;
 
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class DijkstraDriver {
     public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;

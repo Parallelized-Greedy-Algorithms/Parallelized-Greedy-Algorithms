@@ -17,6 +17,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.logging.log4j.core.config.DefaultConfiguration;
 import org.jgrapht.Graph;
+import org.jgrapht.alg.connectivity.ConnectivityInspector;
 import org.jgrapht.ext.JGraphXAdapter;
 import org.jgrapht.generate.WattsStrogatzGraphGenerator;
 import org.jgrapht.graph.DefaultUndirectedWeightedGraph;
@@ -35,8 +36,8 @@ public class BoruvkaDriver {
 //    public static final int PROCESSORS = 2;
     static final int SEED = 5;
     static Random rng = new Random(SEED);
-    static final int NUM_NODES = 97;
-    static final int K_NEIGHBORS = 6; // should be > ln(NUM_NODES) && even
+    static final int NUM_NODES = 399;
+    static final int K_NEIGHBORS = 4; // should be > ln(NUM_NODES) && even
     static final double PROB_REWIRE = 0.8;
 
     public static void writeGraph(Graph graph) throws IOException {
@@ -69,9 +70,7 @@ public class BoruvkaDriver {
         return sum;
     }
 
-    public static void main(String[] args) throws InterruptedException {
-        Configurator.initialize(new DefaultConfiguration());
-        Configurator.setRootLevel(Level.INFO);
+    public static Graph createGraph(){
         Supplier<Node> nodeSupplier = new Supplier<>() {
             private int id = 0;
             @Override
@@ -83,22 +82,98 @@ public class BoruvkaDriver {
                 return String.valueOf(id);
             }
         };
-
         Supplier<Edge> edgeSupplier = () -> new Edge(rng);
-
         DefaultUndirectedWeightedGraph<Node, Edge> graph = new DefaultUndirectedWeightedGraph<>(
                 nodeSupplier,
                 edgeSupplier
-                );
+        );
+
+        return graph;
+    }
+
+    public static void generateGraph(Graph graph, int numNodes, int numNeighbors){
         WattsStrogatzGraphGenerator<Node, Edge> generator = new
-                WattsStrogatzGraphGenerator<>(NUM_NODES, K_NEIGHBORS, PROB_REWIRE, SEED);
+                WattsStrogatzGraphGenerator<>(numNodes, numNeighbors, PROB_REWIRE, SEED);
         generator.generateGraph(graph);
+    }
 
-        Set<Edge> edges = graph.edgeSet();
 
-        for(Edge edge: edges){
-            edge.assignValues();
+    public static void runTester(int numNodes) throws InterruptedException {
+        int maxSize = numNodes;
+
+        int curK = 2;
+        int curN = 5;
+
+        while(curN++ < maxSize){
+            log.info("N: " + curN + " | K: " +curK);
+            while(curK >= curN){
+                curN++;
+            }
+            if(Math.log(curN) >= curK){
+                curK += 2;
+            }
+
+            Graph graph = createGraph();
+            generateGraph(graph, curN, curK);
+
+            ConnectivityInspector<Node, Edge> inspector = new ConnectivityInspector<>(graph);
+            boolean isConnected = inspector.isConnected();
+            if(!isConnected){
+                log.info("NOT connected");
+                continue;
+            }
+            log.info("Graph is connected.");
+
+            log.info(curN + " >> " + curK + " >> " + Math.log(curN) + " >> 1");
+
+            Set<Edge> edges = graph.edgeSet();
+            for(Edge edge: edges){
+                edge.assignValues();
+            }
+
+            BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
+            long startSeq = System.currentTimeMillis();
+            Set<Edge> seqEdges = sequential.run();
+            long endSeq = System.currentTimeMillis();
+            log.info("Sequential:");
+            stats(seqEdges);
+            log.info("Took: " + (endSeq - startSeq) + " ms");
+
+            BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
+            long startPar = System.currentTimeMillis();
+            Set<Edge> parallelEdges = parallel.run();
+            long endPar = System.currentTimeMillis();
+            log.info("Parallel:");
+            stats(parallelEdges);
+            log.info("Took: " + (endPar-startPar) + " ms");
+
+            boolean isEqual = (calculateSum(seqEdges) == calculateSum(parallelEdges));
+            log.info("Sequential & parallel are equivalent: " + isEqual + "\n");
+
         }
+
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Configurator.initialize(new DefaultConfiguration());
+        Configurator.setRootLevel(Level.INFO);
+
+//        Graph graph = createGraph();
+//        generateGraph(graph, 39, 4);
+//
+//        Set<Edge> edges = graph.edgeSet();
+//        for(Edge edge: edges){
+//            edge.assignValues();
+//        }
+//        BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
+//        long startPar = System.currentTimeMillis();
+//        Set<Edge> parallelEdges = parallel.run();
+//        long endPar = System.currentTimeMillis();
+//        log.info("Parallel:");
+//        stats(parallelEdges);
+//        log.info("Took: " + (endPar-startPar) + " ms");
+
+        runTester(100);
 
 //        try {
 //            writeGraph(graph);
@@ -106,17 +181,5 @@ public class BoruvkaDriver {
 //            throw new RuntimeException(e);
 //        }
 
-
-        BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
-        Set<Edge> seqEdges = sequential.run();
-        log.info("Sequential:");
-        stats(seqEdges);
-
-        BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
-        Set<Edge> parallelEdges = parallel.run();
-        log.info("Parallel:");
-        stats(parallelEdges);
-        boolean isEqual = (calculateSum(seqEdges) == calculateSum(parallelEdges));
-        log.info("Sequential & parallel are equivalent: " + isEqual);
     }
 }

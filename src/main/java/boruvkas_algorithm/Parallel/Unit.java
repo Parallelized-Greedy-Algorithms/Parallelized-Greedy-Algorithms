@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 // occupies 1 cache line
 // 1 cache line is 64 bytes
-// Object header takes 8 bytes
+// Object header takes 12 bytes
 // long == 8 bytes
 // int == 4 bytes
 // AtomicInteger == 20 bytes
@@ -12,7 +12,7 @@ public class Unit{
     public volatile int value = 0;
 //    private long p1, p2, p3, p4;
     private long p1, p2, p3, p4, p5, p6;
-    private int p7;
+//    private int p7;
 //    public AtomicInteger atomic;
 
     Unit(){}

@@ -8,6 +8,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -39,13 +40,15 @@ public class BoruvkaParallel {
     protected final Set<Edge> connectedEdges;
     protected final Map<Integer, Integer> vertexToComponentMap;
 
+    protected int numFalseConnected;
+
     public BoruvkaParallel(int numProcessors, Set<Node> nodes, Set<Edge> edges){
         this.numProcessors = numProcessors;
         oldNodes = nodes;
         oldEdges = edges;
 
         newNodes = new ConcurrentLinkedQueue<>();
-        connectedMap = new ConcurrentHashMap<>();
+        connectedMap = new ConcurrentSkipListMap<>();
         threadToLocalNodesMap = new HashMap<>();
 
         threads = new HashSet<>();
@@ -68,6 +71,8 @@ public class BoruvkaParallel {
             vertexToComponentMap.put(i, i);
         }
 
+        numFalseConnected = 0;
+
         int nodeNum = 0;
         int baseNodesPerThread = graph.numNodes / numWorkingThreads.get();
         int extraNodesPerThread = graph.numNodes % numWorkingThreads.get();
@@ -76,8 +81,9 @@ public class BoruvkaParallel {
             for(int j = 0; j < baseNodesPerThread; j++){
                 localNodes.add(nodeNum++);
             }
-            if(extraNodesPerThread-- > 0){
+            if(extraNodesPerThread > 0){
                 localNodes.add(nodeNum++);
+                extraNodesPerThread--;
             }
 
             threads.add(new Thread(new Worker(i == 0 ? true : false, i, localNodes)));
@@ -108,7 +114,7 @@ public class BoruvkaParallel {
                 for(Integer node: localNodes){
                     // iterate over outgoing edges from node
                     int minWeight = Integer.MAX_VALUE;
-                    int edge = -1;
+                    int edge = -2;
                     int firstEdgeIndex = graph.getFirstEdge(node);
                     for(int i = firstEdgeIndex; i < firstEdgeIndex + graph.getOutDegree(node); i++){
                         int weight = graph.getWeight(i);
@@ -116,6 +122,9 @@ public class BoruvkaParallel {
                             minWeight = weight;
                             edge = i;
                         }
+                    }
+                    if(edge == -2){
+                        System.out.println();
                     }
                     graph.setNodeMinEdge(node, edge);
                 }
@@ -140,9 +149,8 @@ public class BoruvkaParallel {
                 }
 
                 synchronizeStep();
-                // TODO: is this needed?
                 for(Integer node: nodesToRemove){
-                    graph.setNodeMinEdge(node, null);
+                    graph.setNodeMinEdge(node, -1);
                 }
                 synchronizeStep();
 
@@ -161,15 +169,19 @@ public class BoruvkaParallel {
                         newNodes.add(node);
                         graph.setFlag(node, 1);
                     }
-                    // otherwise, find the representative for the component
-                    else{
+                }
+                synchronizeStep();
+                for(Integer node: localNodes){
+                    Integer edge = graph.getNodeMinEdge(node);
+                    if(edge != -1){
+                        // otherwise, find the representative for the component
                         int oldColor = graph.getDestination(graph.getNodeMinEdge(node));
                         int color = vertexToComponentMap.get(oldColor);
                         while(graph.getNodeMinEdge(color) != -1){
                             oldColor = graph.getDestination(graph.getNodeMinEdge(color));
                             color = vertexToComponentMap.get(oldColor);
                         }
-                        graph.setColor(node, color); // TODO iteration #2 doesn't add colors correctly
+                        graph.setColor(node, color);
                         connectedEdges.add(new Edge(new Node(node), new Node(graph.getDestination(graph.getNodeMinEdge(node))), graph.getWeight(graph.getNodeMinEdge(node))));
                     }
                 }
@@ -182,11 +194,9 @@ public class BoruvkaParallel {
                  *  representative nodes.
                  */
                 if(isAuthority){
-//                    nextGraph = new CSRGraph(newNodes, graph.numNodes, graph.getDestinations(), graph.getWeights());
                     nextGraph = new CSRGraph(newNodes, graph.numNodes);
                     // create new indexes for nodes
                     nextGraph.setNameMap(0, 0);
-                    boolean hasSetAleastOnce = false;
                     for(int i = 1; i < graph.numNodes; i++){
                         int newName = graph.getFlag(i-1) + graph.getNewName(i-1);
                         graph.addNewName(i, newName);
@@ -222,32 +232,36 @@ public class BoruvkaParallel {
                         // if the edge crosses components
                         if(color != graph.getColor(vertexToComponentMap.get(graph.getDestination(i)))){
                             nextGraph.incOutDegree(graph.getNewName(color));
-                            connectedMap.put(i, false); //TODO : unneeded
+                            connectedMap.put(i, false); // unneeded
                         }
                         else{
-                            connectedMap.put(i, true); // TODO: unneeded
+                            connectedMap.put(i, true); // unneeded
                         }
                     }
                 }
                 synchronizeStep();
-
                 // authority thread builds newFirstEdges, non-authority threads wait
                 buildNewFirstEdges();
-                synchronizeStep(); // NEEDED for reliability
+                synchronizeStep();
 
                 /** (f) build new edges from old graph
                  *  All edges that cross components are added to the contracted graph.
                  */
                 for(Integer node: localNodes){
+                    int color =graph.getColor(node);
                     for(int edge = graph.getFirstEdge(node); edge < graph.getFirstEdge(node) + graph.getOutDegree(node); edge++){
-                        if(!connectedMap.get(edge)){
+//                        if(!connectedMap.get(edge)){
+                        // if the edge crosses components
+                        if(color != graph.getColor(vertexToComponentMap.get(graph.getDestination(edge)))){
                             int newEdgePos = nextGraph.getNextEdge(graph.getNewName(graph.getColor(node)));
                             nextGraph.addDestination(newEdgePos, graph.getDestination(edge));
                             nextGraph.addWeight(newEdgePos, graph.getWeight(edge));
                         }
                     }
                 }
+                synchronizeStep();
                 handoffNewStructures();
+                synchronizeStep();
             }
             if(isAuthority){
                 while(numWorkingThreads.get() > 1){
@@ -256,12 +270,16 @@ public class BoruvkaParallel {
                 }
             }
             else{
-                numThreadsLeftToSynchronize.decrementAndGet();
+//                numThreadsLeftToSynchronize.decrementAndGet();
+                lock.lock();
                 numActiveThreads.decrementAndGet();
                 numWorkingThreads.decrementAndGet();
-                if(numThreadsLeftToSynchronize.get() <= 1){
-                    awakenThreads();
+                numThreadsLeftToSynchronize.decrementAndGet();
+                if(numThreadsLeftToSynchronize.get() == 0){
+                    numThreadsLeftToSynchronize.set(numWorkingThreads.get());
+                    isSleeping.signalAll(); // signal all sleeping threads to wake up
                 }
+                lock.unlock();
             }
         }
 
@@ -272,17 +290,14 @@ public class BoruvkaParallel {
         }
 
         public void synchronizeStep(){
-//            if(numWorkingThreads.get() == 1){
-//                return;
-//            }
             lock.lock();
-            if(numThreadsLeftToSynchronize.get() <= 1){
+            numThreadsLeftToSynchronize.decrementAndGet();
+            if(numThreadsLeftToSynchronize.get() == 0){
                 numThreadsLeftToSynchronize.set(numWorkingThreads.get());
                 isSleeping.signalAll(); // signal all sleeping threads to wake up
             }
             else{
                 try {
-                    numThreadsLeftToSynchronize.decrementAndGet();
                     isSleeping.await();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -294,48 +309,35 @@ public class BoruvkaParallel {
         public void buildNewFirstEdges() {
 //            lock.lock();
             if(isAuthority){
-                // wait until authority is only active thread
-//                if(numActiveThreads.get() > 1){
-//                    readyForAuthority.await();
-//                }
-                while(numActiveThreads.get() > 1){}
                 int i;
 
                 // perform exclusive prefix sum
-                nextGraph.addFirstEdge(0, 0);
-                for(i = 1; i < nextGraph.numNodes; i++){
-                    nextGraph.addFirstEdge(i, nextGraph.getOutDegree(i-1) + nextGraph.getFirstEdge(i-1));
-                }
+                if(nextGraph.numNodes > 0){
+                    nextGraph.addFirstEdge(0, 0);
+                    for(i = 1; i < nextGraph.numNodes; i++){
+                        nextGraph.addFirstEdge(i, nextGraph.getOutDegree(i-1) + nextGraph.getFirstEdge(i-1));
+                    }
 
-                // initialize edges
-                nextGraph.initializeEdges(nextGraph.getFirstEdge(i-1)+nextGraph.getOutDegree(i-1));
+                    // initialize edges
+                    nextGraph.initializeEdges(nextGraph.getFirstEdge(i-1)+nextGraph.getOutDegree(i-1));
+                }
 
                 // initialize nextEdges
                 nextGraph.initializeNextEdges();
-//                log.info(nextGraph.getNextEdge(0));
 
-                // send done signal
-                numActiveThreads.set(numWorkingThreads.get());
-//                readyForNonAuthority.signalAll();
+                int counter = 0;
+                for(boolean val: connectedMap.values()){
+                    if(!val){
+                        counter++;
+                    }
+                }
+
+                numFalseConnected = counter;
             }
-            else{
-                numActiveThreads.decrementAndGet();
-                // busy wait until authority indicates finished by setting numActiveThreads to numWorkingThreads
-                while(numActiveThreads.get() != numWorkingThreads.get()){}
-//                if(numActiveThreads.get() <= 1){
-//                    readyForAuthority.signalAll();
-//                }
-//                else{
-//                    isSleeping.await();
-//                }
-            }
-//            lock.unlock();
         }
 
         public void handoffNewStructures(){
             if(isAuthority){
-                while(numActiveThreads.get() > 1){}
-
                 Collection<Set<Integer>> allNodes = threadToLocalNodesMap.values();
                 for(Set<Integer> nodes: allNodes){
                     nodes.clear();
@@ -366,12 +368,6 @@ public class BoruvkaParallel {
                 connectedMap.clear();
 
                 graph = nextGraph;
-
-                numActiveThreads.set(numWorkingThreads.get());
-            }
-            else{
-                numActiveThreads.decrementAndGet();
-                while(numActiveThreads.get() != numWorkingThreads.get()){}
             }
         }
 

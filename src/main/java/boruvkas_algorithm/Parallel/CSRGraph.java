@@ -14,14 +14,14 @@ public class CSRGraph {
     public int numNodes;
     private List<Unit> destinations;
     private List<Unit> weights;
-    private final List<Unit> firstEdges;
-    private final ArrayList<Unit> outDegrees;
-    private final List<Unit> nodeMinEdges; // pointer to minimum edge of node at index
-    private final List<Unit> colors;
-    private final List<Unit> flag;
-    private final List<Unit> newNames; // map of node to new node name in nextGraph (ONLY for representatives)
+    private List<Unit> firstEdges;
+    private volatile ArrayList<Unit> outDegrees;
+    private volatile List<Unit> nodeMinEdges; // pointer to minimum edge of node at index
+    private volatile List<Unit> colors;
+    private List<Unit> flag;
+    private List<Unit> newNames; // map of node to new node name in nextGraph (ONLY for representatives)
     private List<Unit> mapOldNewNames;
-    private final Map<Integer, AtomicInteger> nextEdges;
+    private Map<Integer, AtomicInteger> nextEdges;
 
     private CSRGraph(Collection<?> nodes){
         numNodes =  nodes.size();
@@ -50,12 +50,6 @@ public class CSRGraph {
         for(int i = nodes.size(); i < oldNumNodes; i++){
             mapOldNewNames.add(new Unit(i));
         }
-    }
-
-    public CSRGraph(Collection<?> nodes, int oldNumNodes, List<Unit> destinations, List<Unit> weights){
-        this(nodes, oldNumNodes);
-        this.destinations = destinations;
-        this.weights = weights;
     }
 
     public CSRGraph(Set<Node> nodes, Set<Edge> edges){
@@ -148,13 +142,8 @@ public class CSRGraph {
         return mapOldNewNames.get(oldNode).value;
     }
 
-    public void setNodeMinEdge(int node, Integer edge){
-        if(edge == null){
-            nodeMinEdges.get(node).value = -1;
-        }
-        else{
-            nodeMinEdges.get(node).value = edge;
-        }
+    public void setNodeMinEdge(int node, int edge){
+        nodeMinEdges.get(node).value = edge;
     }
 
     public void setColor(int node, int color){
@@ -179,6 +168,9 @@ public class CSRGraph {
     }
 
     public void addDestination(int edge, int node){
+        if(destinations.get(edge).value != 0){
+            System.out.println();
+        }
         destinations.get(edge).value = node;
     }
 
