@@ -79,9 +79,9 @@ public class BoruvkaSequential {
 
                 edgesPrime.add(edge);
             }
-            endTime = System.currentTimeMillis();
-            log.info("Number of components: " + components.size() + " | took " + (endTime-startTime) + " ms");
-            startTime = System.currentTimeMillis();
+//            endTime = System.currentTimeMillis();
+//            log.info("Number of components: " + components.size() + " | took " + (endTime-startTime) + " ms");
+//            startTime = System.currentTimeMillis();
 
             // remove edges that aren't in-between two differing components
             for(Component component: components){

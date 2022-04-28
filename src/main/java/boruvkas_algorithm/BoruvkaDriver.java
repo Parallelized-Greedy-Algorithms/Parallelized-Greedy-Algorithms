@@ -57,6 +57,10 @@ public class BoruvkaDriver {
         ImageIO.write(image, "PNG", imgFile);
     }
 
+    public static void stats(int sum){
+        log.info("Minimum sum: " + sum);
+
+    }
     public static void stats(Set<Edge> edges){
 //        log.info("Edges: " + edges);
         log.info("Number edges: " + edges.size());
@@ -98,18 +102,19 @@ public class BoruvkaDriver {
     }
 
 
-    public static void runTester(int numNodes) throws InterruptedException {
+    public static void runTester(int start, int numNodes, int increment) throws InterruptedException {
         int maxSize = numNodes;
 
         int curK = 2;
-        int curN = 5;
+        int curN = start;
 
-        while(curN++ < maxSize){
-            log.info("N: " + curN + " | K: " +curK);
+        while(curN < maxSize){
+//            log.info("N: " + curN + " | K: " +curK);
+            log.info("Number of nodes: " + curN);
             while(curK >= curN){
                 curN++;
             }
-            if(Math.log(curN) >= curK){
+            while(Math.log(curN) >= curK){
                 curK += 2;
             }
 
@@ -119,12 +124,12 @@ public class BoruvkaDriver {
             ConnectivityInspector<Node, Edge> inspector = new ConnectivityInspector<>(graph);
             boolean isConnected = inspector.isConnected();
             if(!isConnected){
-                log.info("NOT connected");
+//                log.info("NOT connected");
                 continue;
             }
-            log.info("Graph is connected.");
+//            log.info("Graph is connected.");
 
-            log.info(curN + " >> " + curK + " >> " + Math.log(curN) + " >> 1");
+//            log.info(curN + " >> " + curK + " >> " + Math.log(curN) + " >> 1");
 
             Set<Edge> edges = graph.edgeSet();
             for(Edge edge: edges){
@@ -135,21 +140,22 @@ public class BoruvkaDriver {
             long startSeq = System.currentTimeMillis();
             Set<Edge> seqEdges = sequential.run();
             long endSeq = System.currentTimeMillis();
-            log.info("Sequential:");
-            stats(seqEdges);
-            log.info("Took: " + (endSeq - startSeq) + " ms");
+//            log.info("Sequential:");
+//            stats(seqEdges);
+            log.info("Sequential took: " + (endSeq - startSeq) + " ms");
 
             BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
             long startPar = System.currentTimeMillis();
-            Set<Edge> parallelEdges = parallel.run();
+            int parallelEdges = parallel.run();
             long endPar = System.currentTimeMillis();
-            log.info("Parallel:");
-            stats(parallelEdges);
-            log.info("Took: " + (endPar-startPar) + " ms");
+//            log.info("Parallel:");
+//            stats(parallelEdges);
+            log.info("Parallel took: " + (endPar-startPar) + " ms\n\n");
 
-            boolean isEqual = (calculateSum(seqEdges) == calculateSum(parallelEdges));
-            log.info("Sequential & parallel are equivalent: " + isEqual + "\n");
+//            boolean isEqual = (calculateSum(seqEdges) == parallelEdges);
+//            log.info("Sequential & parallel are equivalent: " + isEqual + "\n");
 
+            curN += increment;
         }
 
     }
@@ -158,22 +164,7 @@ public class BoruvkaDriver {
         Configurator.initialize(new DefaultConfiguration());
         Configurator.setRootLevel(Level.INFO);
 
-//        Graph graph = createGraph();
-//        generateGraph(graph, 39, 4);
-//
-//        Set<Edge> edges = graph.edgeSet();
-//        for(Edge edge: edges){
-//            edge.assignValues();
-//        }
-//        BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
-//        long startPar = System.currentTimeMillis();
-//        Set<Edge> parallelEdges = parallel.run();
-//        long endPar = System.currentTimeMillis();
-//        log.info("Parallel:");
-//        stats(parallelEdges);
-//        log.info("Took: " + (endPar-startPar) + " ms");
-
-        runTester(100);
+        runTester(13500, 20000, 1500);
 
 //        try {
 //            writeGraph(graph);

@@ -41,6 +41,7 @@ public class BoruvkaParallel {
     protected final Map<Integer, Integer> vertexToComponentMap;
 
     protected int numFalseConnected;
+    protected int numConnectedEdges;
 
     public BoruvkaParallel(int numProcessors, Set<Node> nodes, Set<Edge> edges){
         this.numProcessors = numProcessors;
@@ -72,6 +73,7 @@ public class BoruvkaParallel {
         }
 
         numFalseConnected = 0;
+        numConnectedEdges = 0;
 
         int nodeNum = 0;
         int baseNodesPerThread = graph.numNodes / numWorkingThreads.get();
@@ -122,9 +124,6 @@ public class BoruvkaParallel {
                             minWeight = weight;
                             edge = i;
                         }
-                    }
-                    if(edge == -2){
-                        System.out.println();
                     }
                     graph.setNodeMinEdge(node, edge);
                 }
@@ -177,12 +176,21 @@ public class BoruvkaParallel {
                         // otherwise, find the representative for the component
                         int oldColor = graph.getDestination(graph.getNodeMinEdge(node));
                         int color = vertexToComponentMap.get(oldColor);
+                        int cycleColor = color;
+                        int numIterationsToWait = 0;
                         while(graph.getNodeMinEdge(color) != -1){
+                            int prevColor = color;
+
                             oldColor = graph.getDestination(graph.getNodeMinEdge(color));
                             color = vertexToComponentMap.get(oldColor);
+
+                            if(color == cycleColor){
+                                graph.setNodeMinEdge(prevColor, -1);
+                            }
                         }
                         graph.setColor(node, color);
-                        connectedEdges.add(new Edge(new Node(node), new Node(graph.getDestination(graph.getNodeMinEdge(node))), graph.getWeight(graph.getNodeMinEdge(node))));
+//                        connectedEdges.add(new Edge(new Node(node), new Node(graph.getDestination(graph.getNodeMinEdge(node))), graph.getWeight(graph.getNodeMinEdge(node))));
+                        numConnectedEdges += graph.getWeight(graph.getNodeMinEdge(node));
                     }
                 }
 
@@ -232,10 +240,6 @@ public class BoruvkaParallel {
                         // if the edge crosses components
                         if(color != graph.getColor(vertexToComponentMap.get(graph.getDestination(i)))){
                             nextGraph.incOutDegree(graph.getNewName(color));
-                            connectedMap.put(i, false); // unneeded
-                        }
-                        else{
-                            connectedMap.put(i, true); // unneeded
                         }
                     }
                 }
@@ -307,7 +311,6 @@ public class BoruvkaParallel {
         }
 
         public void buildNewFirstEdges() {
-//            lock.lock();
             if(isAuthority){
                 int i;
 
@@ -324,15 +327,6 @@ public class BoruvkaParallel {
 
                 // initialize nextEdges
                 nextGraph.initializeNextEdges();
-
-                int counter = 0;
-                for(boolean val: connectedMap.values()){
-                    if(!val){
-                        counter++;
-                    }
-                }
-
-                numFalseConnected = counter;
             }
         }
 
@@ -342,7 +336,6 @@ public class BoruvkaParallel {
                 for(Set<Integer> nodes: allNodes){
                     nodes.clear();
                 }
-
 
                 int baseNodesPerThread = newNodes.size() / numWorkingThreads.get();
                 int extraNodesPerThread = newNodes.size() % numWorkingThreads.get();
@@ -357,7 +350,6 @@ public class BoruvkaParallel {
                         extraNodesPerThread--;
                     }
                 }
-                assert(newNodes.isEmpty());
 
                 // update vertex map
                 for(Map.Entry<Integer, Integer> entry: vertexToComponentMap.entrySet()){
@@ -365,20 +357,17 @@ public class BoruvkaParallel {
                     entry.setValue(nextGraph.getMapNewName(entry.getValue()));
                 }
 
-                connectedMap.clear();
-
                 graph = nextGraph;
             }
         }
-
     }
 
 
-    public Set<Edge> run() throws InterruptedException {
+    public int run() throws InterruptedException {
         for(Thread thread: threads){
             thread.start();
         }
         while(numWorkingThreads.get() > 1){}
-        return connectedEdges;
+        return numConnectedEdges;
     }
 }

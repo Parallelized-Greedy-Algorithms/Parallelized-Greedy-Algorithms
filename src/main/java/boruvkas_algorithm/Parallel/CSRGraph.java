@@ -15,9 +15,9 @@ public class CSRGraph {
     private List<Unit> destinations;
     private List<Unit> weights;
     private List<Unit> firstEdges;
-    private volatile ArrayList<Unit> outDegrees;
-    private volatile List<Unit> nodeMinEdges; // pointer to minimum edge of node at index
-    private volatile List<Unit> colors;
+    private ArrayList<Unit> outDegrees;
+    private List<Unit> nodeMinEdges; // pointer to minimum edge of node at index
+    private List<Unit> colors;
     private List<Unit> flag;
     private List<Unit> newNames; // map of node to new node name in nextGraph (ONLY for representatives)
     private List<Unit> mapOldNewNames;
@@ -36,7 +36,7 @@ public class CSRGraph {
 
         for(int i = 0; i < numNodes; i++){
             firstEdges.add(new Unit());
-            outDegrees.add(new Unit());
+            outDegrees.add(new Unit(new AtomicInteger(0)));
             colors.add(new Unit(-1));
             nodeMinEdges.add(new Unit());
             flag.add(new Unit());
@@ -67,12 +67,12 @@ public class CSRGraph {
         for(Node node: nodes){
             for(Edge edge: edges){
                 if(node.getId() == edge.getNode1().getId()){
-                    outDegrees.get(node.getId()).value++;
+                    incOutDegree(node.getId());
                     destinations.set(edgeCounter, new Unit(edge.getNode2().getId()));
                     weights.set(edgeCounter++, new Unit(edge.getDistance()));
                 }
                 else if(node.getId() == edge.getNode2().getId()){
-                    outDegrees.get(node.getId()).value++;
+                    incOutDegree(node.getId());
                     destinations.set(edgeCounter, new Unit(edge.getNode1().getId()));
                     weights.set(edgeCounter++, new Unit(edge.getDistance()));
                 }
@@ -81,7 +81,7 @@ public class CSRGraph {
 
         firstEdges.get(0).value = 0;
         for(int i = 1; i < numNodes; i++){
-            firstEdges.get(i).value = outDegrees.get(i-1).value + firstEdges.get(i-1).value;
+            firstEdges.get(i).value = getOutDegree(i-1) + firstEdges.get(i-1).value;
         }
         System.out.println();
     }
@@ -111,7 +111,7 @@ public class CSRGraph {
     }
 
     public int getOutDegree(int node){
-        return outDegrees.get(node).value;
+        return outDegrees.get(node).atomic.get();
     }
 
     public int getWeight(int edge){
@@ -160,7 +160,7 @@ public class CSRGraph {
     }
 
     public void incOutDegree(int node){
-        outDegrees.get(node).value++;
+        outDegrees.get(node).atomic.incrementAndGet();
     }
 
     public void addFirstEdge(int node, int edge){
