@@ -79,12 +79,11 @@ public class DijkstraDriver {
 
     public static void main(String[] args){
         Configurator.initialize(new DefaultConfiguration());
-//            Configurator.setRootLevel(Level.INFO);
         Configurator.setRootLevel(Level.OFF);
 
 
         System.out.println("Threads: " + PROCESSORS);
-        for(int i = 500; i < 1001; i+= 500){
+        for(int i = 500; i < 3001; i+= 500){
             Graph graph = new Graph();
             populateGraph(graph, i);
 

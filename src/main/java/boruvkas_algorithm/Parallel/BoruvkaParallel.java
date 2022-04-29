@@ -9,6 +9,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -18,7 +19,6 @@ public class BoruvkaParallel {
     private static final Logger log = LogManager.getLogger(BoruvkaParallel.class);
     protected Queue<Integer> newNodes;
     protected Map<Integer, Boolean> connectedMap;
-    protected final AtomicInteger numActiveThreads; // threads currently executing code
     protected final AtomicInteger numWorkingThreads; // total threads either executing code or busy waiting
     protected final AtomicInteger numThreadsLeftToSynchronize;
     protected final int numProcessors;
@@ -27,6 +27,7 @@ public class BoruvkaParallel {
     protected ArrayList<Unit> nextOutDegrees;
 
     protected final Map<Integer, Set<Integer>> threadToLocalNodesMap;
+    protected final Map<Integer, AtomicBoolean> threadToIsFinishedMap;
     protected final Set<Thread> threads;
 
     protected final Set<Node> oldNodes;
@@ -34,13 +35,10 @@ public class BoruvkaParallel {
 
     protected final Lock lock;
     protected final Condition isSleeping;
-    protected final Condition readyForAuthority;
-    protected final Condition readyForNonAuthority;
 
     protected final Set<Edge> connectedEdges;
     protected final Map<Integer, Integer> vertexToComponentMap;
 
-    protected int numFalseConnected;
     protected int numConnectedEdges;
 
     public BoruvkaParallel(int numProcessors, Set<Node> nodes, Set<Edge> edges){
@@ -51,10 +49,10 @@ public class BoruvkaParallel {
         newNodes = new ConcurrentLinkedQueue<>();
         connectedMap = new ConcurrentSkipListMap<>();
         threadToLocalNodesMap = new HashMap<>();
+        threadToIsFinishedMap = new HashMap<>();
 
         threads = new HashSet<>();
 
-        numActiveThreads = new AtomicInteger(numProcessors);
         numWorkingThreads = new AtomicInteger(numProcessors);
         numThreadsLeftToSynchronize = new AtomicInteger(numProcessors);
 
@@ -63,8 +61,6 @@ public class BoruvkaParallel {
 
         lock = new ReentrantLock();
         isSleeping = lock.newCondition();
-        readyForAuthority = lock.newCondition();
-        readyForNonAuthority = lock.newCondition();
 
         connectedEdges = ConcurrentHashMap.newKeySet();
         vertexToComponentMap = new HashMap<>();
@@ -72,7 +68,6 @@ public class BoruvkaParallel {
             vertexToComponentMap.put(i, i);
         }
 
-        numFalseConnected = 0;
         numConnectedEdges = 0;
 
         int nodeNum = 0;
@@ -88,8 +83,10 @@ public class BoruvkaParallel {
                 extraNodesPerThread--;
             }
 
-            threads.add(new Thread(new Worker(i == 0 ? true : false, i, localNodes)));
+            AtomicBoolean isFinished = new AtomicBoolean(false);
+            threads.add(new Thread(new Worker(i == 0 ? true : false, i, localNodes, isFinished)));
             threadToLocalNodesMap.put(i, localNodes);
+            threadToIsFinishedMap.put(i, isFinished);
         }
     }
 
@@ -98,10 +95,13 @@ public class BoruvkaParallel {
         private final boolean isAuthority;
         private final int threadID;
 
-        public Worker(boolean isAuthority, int threadID, Set<Integer> localNodes){
+        private final AtomicBoolean isFinished;
+
+        public Worker(boolean isAuthority, int threadID, Set<Integer> localNodes, AtomicBoolean isFinished){
             this.isAuthority = isAuthority;
             this.localNodes = localNodes;
             this.threadID = threadID;
+            this.isFinished = isFinished;
         }
 
         @Override
@@ -116,7 +116,7 @@ public class BoruvkaParallel {
                 for(Integer node: localNodes){
                     // iterate over outgoing edges from node
                     int minWeight = Integer.MAX_VALUE;
-                    int edge = -2;
+                    int edge = -1;
                     int firstEdgeIndex = graph.getFirstEdge(node);
                     for(int i = firstEdgeIndex; i < firstEdgeIndex + graph.getOutDegree(node); i++){
                         int weight = graph.getWeight(i);
@@ -169,7 +169,7 @@ public class BoruvkaParallel {
                         graph.setFlag(node, 1);
                     }
                 }
-                synchronizeStep();
+                synchronizeStep(); // unneeded
                 for(Integer node: localNodes){
                     Integer edge = graph.getNodeMinEdge(node);
                     if(edge != -1){
@@ -276,7 +276,6 @@ public class BoruvkaParallel {
             else{
 //                numThreadsLeftToSynchronize.decrementAndGet();
                 lock.lock();
-                numActiveThreads.decrementAndGet();
                 numWorkingThreads.decrementAndGet();
                 numThreadsLeftToSynchronize.decrementAndGet();
                 if(numThreadsLeftToSynchronize.get() == 0){
@@ -285,6 +284,7 @@ public class BoruvkaParallel {
                 }
                 lock.unlock();
             }
+            isFinished.set(true);
         }
 
         public void awakenThreads(){
@@ -341,7 +341,14 @@ public class BoruvkaParallel {
                 int extraNodesPerThread = newNodes.size() % numWorkingThreads.get();
 
                 // evenly distribute new nodes amongst each thread
-                for(Set<Integer> nodes: allNodes){
+
+                for(Map.Entry<Integer, Set<Integer>> entry: threadToLocalNodesMap.entrySet()){
+                    // if thread is finished, skip it
+                    if(threadToIsFinishedMap.get(entry.getKey()).get()){
+                        continue;
+                    }
+
+                    Set<Integer> nodes = entry.getValue();
                     for(int i = 0; i < baseNodesPerThread; i++){
                         nodes.add(graph.getNewName(newNodes.remove()));
                     }

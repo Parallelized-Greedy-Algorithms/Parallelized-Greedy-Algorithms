@@ -31,7 +31,7 @@ import java.util.*;
 import java.util.function.Supplier;
 
 public class BoruvkaDriver {
-    private static final Logger log = LogManager.getLogger("BoruvkaDriver");
+    private static final Logger log = LogManager.getLogger(BoruvkaDriver.class);
     public static final int PROCESSORS = Runtime.getRuntime().availableProcessors()/2;
 //    public static final int PROCESSORS = 2;
     static final int SEED = 5;
@@ -110,7 +110,7 @@ public class BoruvkaDriver {
 
         while(curN < maxSize){
 //            log.info("N: " + curN + " | K: " +curK);
-            log.info("Number of nodes: " + curN);
+            System.out.println("number of nodes: " + curN);
             while(curK >= curN){
                 curN++;
             }
@@ -138,22 +138,16 @@ public class BoruvkaDriver {
 
             BoruvkaSequential sequential = new BoruvkaSequential(graph.vertexSet(), edges);
             long startSeq = System.currentTimeMillis();
-            Set<Edge> seqEdges = sequential.run();
+            sequential.run();
             long endSeq = System.currentTimeMillis();
-//            log.info("Sequential:");
-//            stats(seqEdges);
-            log.info("Sequential took: " + (endSeq - startSeq) + " ms");
+            System.out.println("Sequential took: " + (endSeq - startSeq) + " ms");
 
             BoruvkaParallel parallel = new BoruvkaParallel(PROCESSORS, graph.vertexSet(), edges);
             long startPar = System.currentTimeMillis();
-            int parallelEdges = parallel.run();
+            parallel.run();
             long endPar = System.currentTimeMillis();
-//            log.info("Parallel:");
-//            stats(parallelEdges);
-            log.info("Parallel took: " + (endPar-startPar) + " ms\n\n");
 
-//            boolean isEqual = (calculateSum(seqEdges) == parallelEdges);
-//            log.info("Sequential & parallel are equivalent: " + isEqual + "\n");
+            System.out.println("Parallel took: " + (endPar-startPar) + " ms\n");
 
             curN += increment;
         }
@@ -164,7 +158,7 @@ public class BoruvkaDriver {
         Configurator.initialize(new DefaultConfiguration());
         Configurator.setRootLevel(Level.INFO);
 
-        runTester(13500, 20000, 1500);
+        runTester(5, 5000, 600);
 
 //        try {
 //            writeGraph(graph);

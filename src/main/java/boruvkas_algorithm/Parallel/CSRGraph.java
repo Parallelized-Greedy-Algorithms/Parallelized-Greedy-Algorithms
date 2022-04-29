@@ -83,7 +83,6 @@ public class CSRGraph {
         for(int i = 1; i < numNodes; i++){
             firstEdges.get(i).value = getOutDegree(i-1) + firstEdges.get(i-1).value;
         }
-        System.out.println();
     }
 
     public void initializeEdges(int size){
@@ -168,9 +167,6 @@ public class CSRGraph {
     }
 
     public void addDestination(int edge, int node){
-        if(destinations.get(edge).value != 0){
-            System.out.println();
-        }
         destinations.get(edge).value = node;
     }
 
@@ -180,32 +176,4 @@ public class CSRGraph {
     public void addNewName(int node, int newName){
         newNames.get(node).value = newName;
     }
-
-    public void setEdges(List<Unit> destinations, List<Unit> weights){
-        this.destinations = destinations;
-        this.weights = weights;
-    }
-
-    public List<Unit> getDestinations(){
-        return destinations;
-    }
-
-    public List<Unit> getWeights(){
-        return weights;
-    }
-
-    public void removeEdges(Set<Integer> edges){
-        destinations.removeAll(edges);
-        weights.removeAll(edges);
-    }
-
-    public void setMap(List<Unit> map){
-        mapOldNewNames = map;
-    }
-
-    public List<Unit> getMap(){
-        return mapOldNewNames;
-    }
-
-
 }

@@ -20,7 +20,7 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>lib/</classpathPrefix>
-                            <mainClass>dijkstras_algorithm.DijkstraDriver</mainClass>
+                            <mainClass>MainDriver</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
